@@ -1,0 +1,134 @@
+﻿#pragma kernel ResetKernel
+#pragma kernel StepKernel
+#pragma enable_d3d11_debug_symbols
+
+#define PI 3.14159265358979
+
+Texture2D<float> readTexture;
+SamplerState sampler_readTexture;
+
+RWTexture2D<float> writeTexture;
+RWTexture2D<float4> outTexture;
+
+int resolution;
+float time;
+float deltaTime;
+
+int colorAmount;
+float4 colors[1000];
+
+float innerRadius;
+
+float4 deathThreshold;
+float4 birthThreshold;
+float alphaInner;
+float alphaOuter;
+
+float hash13(float3 p3) {
+	p3 = frac(p3 * float3(.1031, .11369, .13787));
+	p3 += dot(p3, p3.yzx + 19.19);
+	return frac((p3.x + p3.y) * p3.z);
+}
+
+float rampStep(float x, float a, float ea)
+{
+	return saturate((x - a) / ea + .5);
+}
+
+bool randomReset;
+Texture2D<float4> resetTexture;
+SamplerState sampler_resetTexture;
+
+[numthreads(1, 1, 1)]
+void ResetKernel(uint3 id : SV_DispatchThreadID) 
+{
+	if(randomReset)
+	{
+		writeTexture[id.xy] = hash13(float3(id.x, id.y, time)).x * .75;
+	} else 
+	{
+		float4 imageValue = resetTexture.SampleLevel(sampler_resetTexture, id.xy / (float)resolution, 0);
+		float average = (imageValue.x + imageValue.y + imageValue.z) / 3.0;
+ 
+		writeTexture[id.xy] = average;
+	}
+}
+
+
+void Render(uint3 id, float state01, float innerNeighborhood, float outerNeighborhood)
+{
+	const float halfResolution = resolution / 2.0;
+	const float distanceToCenter = distance(float2(halfResolution, halfResolution), id.xy) / halfResolution;
+	const float vignette = smoothstep(.9, .85, distanceToCenter);
+
+	const float colorIndex = state01 * colorAmount;
+	outTexture[id.xy] = colors[floor(colorIndex)] * vignette;
+}
+
+float GetSampledState(int2 id, int2 coordinates)
+{
+	return readTexture.SampleLevel(sampler_readTexture, (id.xy + coordinates) / (float)resolution, 0);
+}
+
+float2 GetNeighborhood(uint2 id)
+{
+	float inner = 0;
+	float outer = 0;
+
+	const float outerRadius = 3 * innerRadius;
+	
+	for(int y = -outerRadius; y <= outerRadius; y++)
+	for(int x = -outerRadius; x <= outerRadius; x++)
+	{
+		const float currentRadius = sqrt(float(x * x + y * y));
+		const float sampledValue = GetSampledState(int2(id.x, id.y), int2(x, y));
+		inner += sampledValue * rampStep(-currentRadius, -innerRadius, 1.0);
+		outer += sampledValue * rampStep(-currentRadius, -outerRadius, 1.0) * rampStep(currentRadius, innerRadius, 1.0);
+	}
+	
+	const float innerRadiusSquared = innerRadius * innerRadius;
+	const float outerRadiusSquared = outerRadius * outerRadius;
+	const float innerArea = PI * innerRadiusSquared;
+	const float outerArea = PI * (outerRadiusSquared - innerRadiusSquared);
+	return float2(inner / innerArea, outer / outerArea);
+}
+
+
+float sigmaOne(float x, float a, float alpha) 
+{
+	return 1.0 / (1.0 + exp(-(x - a)*4.0 / alpha));
+}
+
+float sigmaTwo(float x, float a, float b, float alpha)
+{
+	return sigmaOne(x, a, alpha) * (1.0 - sigmaOne(x, b, alpha ));
+}
+
+float sigmaM(float x, float y, float m, float alpha)
+{
+	const float smoothedM = sigmaOne(m, .5, alpha);
+	return x * (1.0 - smoothedM) + y * smoothedM;
+}
+
+float transition(float n, float m)
+{
+	const float minimum = sigmaM(birthThreshold.x, deathThreshold.x, m, alphaInner);
+	const float maximum = sigmaM(birthThreshold.y, deathThreshold.y, m, alphaInner);
+	return sigmaTwo(n, minimum, maximum, alphaOuter);
+}
+
+#define NUMTHREADS_STEP_KERNEL 32
+
+[numthreads(NUMTHREADS_STEP_KERNEL, NUMTHREADS_STEP_KERNEL, 1)]
+void StepKernel(uint3 id : SV_DispatchThreadID)
+{
+	const float2 neighborhood = GetNeighborhood(id.xy);
+	const float innerNeighborhood = neighborhood.x;
+	const float outerNeighborhood = neighborhood.y;
+	
+	const float currentState = transition(outerNeighborhood, innerNeighborhood);
+
+	writeTexture[id.xy] = currentState;
+
+	Render(id, writeTexture[id.xy], innerNeighborhood, outerNeighborhood);
+}

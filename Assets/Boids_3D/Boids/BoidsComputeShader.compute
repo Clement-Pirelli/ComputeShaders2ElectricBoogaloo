@@ -1,0 +1,209 @@
+﻿#pragma kernel ResetAgentsKernel
+#pragma kernel MoveAgentsKernel
+#pragma kernel VelocityKernel
+#pragma kernel RenderKernel
+#pragma kernel ClearKernel
+#pragma enable_d3d11_debug_symbols
+
+RWTexture2D<float4> outTexture;
+
+#define NUMTHREADS_AGENTS 64
+
+//misc.
+float speed;
+float maxSpeed;
+uint boidSize;
+float trailDecayRate;
+
+float4 brightColor;
+
+//boid algorithm
+float separationRadius;
+float separationWeight;
+
+float cohesionRadius;
+float cohesionWeight;
+
+float alignmentRadius;
+float alignmentWeight;
+
+
+
+//setup
+int resolution;
+float time;
+int stepNumber;
+
+struct Agent
+{
+	float2 position;
+	float2 velocity;
+};
+
+uint agentCount;
+RWStructuredBuffer<Agent> agents;
+RWBuffer<float2> nextVelocities;
+
+bool randomReset;
+Texture2D<float4> resetTexture;
+SamplerState sampler_resetTexture;
+
+////////////////////////////// UTILITIES ////////////////////////////////////////
+bool isApproximately(float a, float b, float approx)
+{
+	return ((a - approx) <= b) && ((a + approx) > b);
+}
+
+float inverseLerp(float a, float b, float t) 
+{
+	return (t - a) / (b - a);
+}
+
+float2 wrapPosition(float2 position)
+{
+	float2 outPosition = position;
+	if (position.x < 0) outPosition.x += resolution - 1.0f;
+	if (position.y < 0) outPosition.y += resolution - 1.0f;
+	outPosition %= float2(resolution, resolution);
+	return outPosition;
+}
+
+float2 rand(float p)
+{
+	const float2 p2 = float2(p, p * resolution);
+
+	float3 p3 = frac(float3(p2.xyx) * float3(.1031, .1030, .0973));
+	p3 += dot(p3, p3.yzx + 33.33);
+	return frac((p3.xx + p3.yz)*p3.zy);
+}
+
+float2 randDir(float randseed)
+{
+	const float angle = rand(randseed).x * 2.0 * 3.1415926524;
+	return float2(cos(angle), sin(angle));
+}
+////////////////////////////// KERNELS ////////////////////////////////////////
+
+[numthreads(NUMTHREADS_AGENTS, 1, 1)]
+void ResetAgentsKernel(uint3 id : SV_DispatchThreadID)
+{
+	Agent agent;
+
+	if(randomReset)
+	{
+		agent.position = rand(id.x * .001 + time * .001) * (float)resolution;
+	}
+	else
+	{
+		for(int i = 0; i < 1000; i++) //tries
+		{
+			const float2 randUV = rand(id.x * .001 + (time + (float)i)* .001);
+			agent.position = randUV * (float)resolution;
+			const float4 resetValue = resetTexture.SampleLevel(sampler_resetTexture, 1 - randUV, 0);
+			float average = (resetValue.x + resetValue.y + resetValue.z) * .333;
+			if (rand(id.x * .01 + sin(time + (float)i)).x < average) break;
+		}
+	}
+
+	agent.velocity = randDir(id.x * .01 + sin(time)) * (.5 + rand(id.x * .0001 + sin(time)));
+	agents[id.x] = agent;
+}
+
+[numthreads(NUMTHREADS_AGENTS, 1, 1)]
+void VelocityKernel(uint3 id :  SV_DispatchThreadID)
+{
+	const Agent agent = agents[id.x];
+
+	int separationAmount = 0;
+	int alignmentAmount = 0;
+	int cohesionAmount = 0;
+	float2 separation = float2(.0, .0);
+	float2 alignment = float2(.0 , .0);
+	float2 cohesion =  float2(.0, .0);
+
+	const float2 thisPosition = agent.position;
+	const float2 thisVelocity = agent.velocity;
+
+	for (uint otherIndex = 0; otherIndex < agentCount; otherIndex++)
+	{
+		if (otherIndex == id.x) continue;
+		const float2 otherPosition = agents[otherIndex].position;
+		float distanceToOther = distance(thisPosition, otherPosition);
+		if (distanceToOther < .001f) distanceToOther = .001f;
+
+		if (distanceToOther <= cohesionRadius)
+		{
+			cohesionAmount++;
+			cohesion += otherPosition;
+		}
+
+		if (distanceToOther <= separationRadius)
+		{
+			separationAmount++;
+			separation += otherPosition;
+		}
+
+		if (distanceToOther <= alignmentRadius)
+		{
+			alignmentAmount++;
+			alignment += agents[otherIndex].velocity;
+		}
+	}
+
+	if (cohesionAmount > 0) 
+		cohesion = (cohesion / cohesionAmount) - thisPosition;
+	cohesion *= .1;
+
+	if (alignmentAmount > 0) 
+		alignment = (alignment / alignmentAmount);
+
+	if (separationAmount > 0) 
+		separation = -((separation / separationAmount) - thisPosition);
+
+	const float2 newVelocity = 
+		(cohesion * cohesionWeight 
+		+ alignment * alignmentWeight 
+		+ separation * separationWeight);
+
+	float2 nextVelocity = newVelocity + thisVelocity;
+	const float nextVelocityMagnitude = length(nextVelocity);
+	const float maxSpeedRes = (maxSpeed*resolution);
+	if (nextVelocityMagnitude > maxSpeedRes)
+	{
+		nextVelocity = normalize(nextVelocity)*maxSpeedRes;
+	}
+
+	nextVelocities[id.x] = nextVelocity;
+}
+
+[numthreads(NUMTHREADS_AGENTS, 1, 1)]
+void MoveAgentsKernel(uint3 id : SV_DispatchThreadID)
+{
+	Agent agent = agents[id.x];
+	const float2 nextVelocity = nextVelocities[id.x];
+	agent.position += nextVelocity * speed;
+	agent.position = wrapPosition(agent.position);
+	agent.velocity = nextVelocity;
+	agents[id.x] = agent;
+}
+
+[numthreads(NUMTHREADS_AGENTS, 1, 1)]
+void RenderKernel(uint3 id :  SV_DispatchThreadID)
+{
+	Agent agent = agents[id.x];
+	float2 position = round(agent.position);
+
+	for (uint i = 0; i < boidSize*boidSize; i++)
+	{
+		int x = (i % boidSize) - 1;
+		int y = (i / boidSize) - 1;
+		outTexture[position + float2(x, y)] = brightColor;
+	}
+}
+
+[numthreads(1, 1, 1)]
+void ClearKernel(uint3 id :  SV_DispatchThreadID)
+{
+	float3 col = saturate(outTexture[id.xy] * (1.0f - trailDecayRate)).xyz;
+	outTexture[id.xy] = float4(col.x, col.y, col.z, 1.0);
+}

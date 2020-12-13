@@ -1,0 +1,192 @@
+﻿#pragma kernel ResetAgentsKernel
+#pragma kernel VelocityKernel
+#pragma enable_d3d11_debug_symbols
+
+#define NUMTHREADS_AGENTS 64
+
+#define PI 3.1415926524
+
+//misc.
+float speed;
+float maxSpeed;
+
+float lineOfSight;
+
+//boid algorithm
+float separationRadius;
+float separationWeight;
+
+float cohesionRadius;
+float cohesionWeight;
+
+float alignmentRadius;
+float alignmentWeight;
+
+float wanderingWeight;
+
+//setup
+int resolution;
+float time;
+int stepNumber;
+
+#define EDGE_WRAP 0
+#define EDGE_CLAMP 1
+#define EDGE_NONE 2
+int edgeType;
+
+struct Agent
+{
+	float3 position;
+	float3 velocity;
+};
+
+uint agentCount;
+RWStructuredBuffer<Agent> agents;
+RWStructuredBuffer<Agent> nextAgents;
+
+////////////////////////////// UTILITIES ////////////////////////////////////////
+bool isApproximately(float a, float b, float approx)
+{
+	return ((a - approx) <= b) && ((a + approx) > b);
+}
+
+float inverseLerp(float a, float b, float t)
+{
+	return (t - a) / (b - a);
+}
+
+float3 wrap(float3 position)
+{
+	if (edgeType != EDGE_WRAP)
+		return position;
+
+	float3 outPosition = position;
+	if (position.x < 0) outPosition.x += resolution - 1.0;
+	if (position.y < 0) outPosition.y += resolution - 1.0; 
+	if (position.z < 0) outPosition.z += resolution - 1.0;
+	outPosition %= float3(resolution, resolution, resolution);
+	return outPosition;
+}
+
+float3 getClampDirection(float3 position)
+{
+	float3 direction = float3(0, 0, 0);
+	if (edgeType != EDGE_CLAMP)
+		return direction;
+
+	if (position.x < 0) direction.x = 1;
+	if (position.y < 0) direction.y = 1;
+	if (position.z < 0) direction.z = 1;
+	if (position.x > resolution) direction.x = -1;
+	if (position.y > resolution) direction.y = -1;
+	if (position.z > resolution) direction.z = -1;
+
+	direction *= maxSpeed * 1.5 * resolution;
+	return direction;
+}
+
+float3 rand(float p)
+{
+	const float3 p3 = float3(p, p * resolution, p * resolution * resolution);
+
+	float3 p3f = frac(p3 * float3(.1031, .1030, .0973));
+	p3f += dot(p3f, p3f.yzx + 33.33);
+	return frac((p3f.xxx + p3f.yzy) * p3f.zyx);
+}
+
+float3 randDir(float randseed)
+{
+	const float u = rand(randseed).x;
+	const float v = rand(randseed).y;
+	const float theta = u * 2.0 * PI;
+	const float phi = acos(2.0 * v - 1.0);
+	const float sinPhi = sin(phi);
+	const float x = sinPhi * cos(theta);
+	const float y = sinPhi * sin(theta);
+	const float z = cos(phi);
+	return float3(x, y, z);
+}
+////////////////////////////// KERNELS ////////////////////////////////////////
+
+[numthreads(NUMTHREADS_AGENTS, 1, 1)]
+void ResetAgentsKernel(uint3 id : SV_DispatchThreadID)
+{
+	Agent agent;
+	agent.position = rand(id.x * .001 + time * .001) * (float)resolution;
+	agent.velocity = randDir(id.x * .01 + sin(time)) * (.5 + rand(id.x * .0001 + sin(time)));
+	agents[id.x] = agent;
+	nextAgents[id.x] = agent;
+}
+
+[numthreads(NUMTHREADS_AGENTS, 1, 1)]
+void VelocityKernel(uint3 id :  SV_DispatchThreadID)
+{
+	const Agent agent = agents[id.x];
+
+	int separationAmount = 0;
+	int alignmentAmount = 0;
+	int cohesionAmount = 0;
+	float3 separation = float3(.0, .0, .0);
+	float3 alignment = float3(.0, .0, .0);
+	float3 cohesion = float3(.0, .0, .0);
+
+	const float3 thisPosition = agent.position;
+	const float3 thisVelocity = agent.velocity;
+
+	for (uint otherIndex = 0; otherIndex < agentCount; otherIndex++)
+	{
+		if (otherIndex == id.x) continue;
+		const float3 otherPosition = agents[otherIndex].position;
+
+		if (dot(normalize(thisVelocity), normalize(otherPosition - thisPosition)) < (lineOfSight * 2.0 - 1.0)) continue;
+
+		float distanceToOther = distance(thisPosition, otherPosition);
+		if (distanceToOther < .001) distanceToOther = .001;
+
+		if (distanceToOther <= cohesionRadius)
+		{
+			cohesionAmount++;
+			cohesion += otherPosition;
+		}
+
+		if (distanceToOther <= separationRadius)
+		{
+			separationAmount++;
+			separation += otherPosition;
+		}
+
+		if (distanceToOther <= alignmentRadius)
+		{
+			alignmentAmount++;
+			alignment += agents[otherIndex].velocity;
+		}
+	}
+
+	if (cohesionAmount > 0)
+		cohesion = (cohesion / cohesionAmount) - thisPosition;
+
+	if (alignmentAmount > 0)
+		alignment = (alignment / alignmentAmount);
+
+	if (separationAmount > 0)
+		separation = -((separation / separationAmount) - thisPosition);
+
+	const float3 wandering = randDir(id.x * .001 * sin(time) * (float)stepNumber);
+
+	const float3 newVelocity =
+		(cohesion * cohesionWeight
+			+ alignment * alignmentWeight
+			+ separation * separationWeight
+			+ wandering * wanderingWeight);
+
+	float3 nextVelocity = newVelocity + thisVelocity + getClampDirection(thisPosition);
+	const float nextVelocityMagnitude = length(nextVelocity);
+	const float maxSpeedRes = (maxSpeed * resolution);
+	if (nextVelocityMagnitude > maxSpeedRes)
+	{
+		nextVelocity = normalize(nextVelocity) * maxSpeedRes;
+	}
+
+	nextAgents[id.x].velocity = nextVelocity; 
+	nextAgents[id.x].position = wrap(thisPosition + nextVelocity * speed);
+}

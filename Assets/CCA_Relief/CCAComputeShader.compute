@@ -1,0 +1,124 @@
+﻿#pragma kernel ResetKernel
+#pragma kernel StepKernel
+#pragma enable_d3d11_debug_symbols
+
+Texture2D<float> readTexture;
+SamplerState sampler_readTexture;
+
+RWTexture2D<float> writeTexture;
+RWTexture2D<float4> outTexture;
+
+int resolution;
+float time;
+
+int range;
+uint statesAmount;
+uint threshold;
+
+
+#define MOORE 0
+#define VONNEUMANN 1
+#define BYHAND 2
+uint neighborhoodType;
+
+#define MAX_RANGE 10
+float4 byHandNeighborhood[1 + MAX_RANGE * MAX_RANGE * 4];
+
+#define MAX_STATES 100
+float4 colors[MAX_STATES];
+
+float2 rand(float2 randseed)
+{
+	return abs(cos(frac(randseed * dot(sin(randseed * 242.589), float2(42.4391588, 3.91711988))) * (294419.4857 + time)));
+}
+
+
+bool randomReset;
+Texture2D<float4> resetTexture;
+SamplerState sampler_resetTexture;
+
+[numthreads(1, 1, 1)]
+void ResetKernel(uint3 id : SV_DispatchThreadID) 
+{
+	if(randomReset)
+	{
+		writeTexture[id.xy] = (int)(rand(id.xy* .01).x * statesAmount);
+	} else 
+	{
+		float4 imageValue = resetTexture.SampleLevel(sampler_resetTexture, id.xy / (float)resolution, 0);
+		float average = (imageValue.x + imageValue.y + imageValue.z) / 3.0;
+ 
+		writeTexture[id.xy] = (int)(average * statesAmount);
+	}
+}
+
+
+void Render(uint3 id, float state, uint neighborCount, uint nextState)
+{
+	float state01 = state / (float)statesAmount;
+	float neighborGauge = neighborCount / (float)threshold;
+	float4 color = state01 * colors[state];
+	//color.xyz *= neighborGauge;
+	
+	float halfResolution = resolution / 2.0;
+	float distanceToCenter = distance(float2(halfResolution, halfResolution), id.xy) / halfResolution;
+	float vignette = smoothstep(.9, .85, distanceToCenter);
+
+	outTexture[id.xy] = saturate(color);
+}
+
+uint GetSampledState(uint2 id, int2 coordinates)
+{
+	return (uint)readTexture.SampleLevel(sampler_readTexture, (id.xy + coordinates) / (float)resolution, 0);
+}
+
+uint GetNeighborCount(uint3 id, uint nextState)
+{
+	uint neighborCount = 0;
+	const uint rangeDimensions = range * 2 + 1;
+	for (int y = -range; y <= range; y++)
+	for (int x = -range; x <= range; x++)
+	{
+		if (x == 0 && y == 0) continue;
+
+		if(neighborhoodType == BYHAND)
+		{
+			const uint indexX = x + range;
+			const uint indexY = y + range;
+			const uint flatIndex = (indexX + indexY * rangeDimensions);
+			const uint index = flatIndex / 4;
+			const uint subindex = flatIndex % 4;
+			const bool inByHandNeighborhood = byHandNeighborhood[index][subindex] > .5;
+
+			if (!inByHandNeighborhood) continue;
+		} else 
+		{
+			if (neighborhoodType != MOORE && x != 0 && y != 0) continue;
+		}
+		
+		const uint sampledState = GetSampledState(id.xy, int2(x, y));
+		neighborCount += (uint)(sampledState == nextState);
+	}
+	return neighborCount;
+}
+
+#define NUMTHREADS_STEP_KERNEL 16
+
+[numthreads(NUMTHREADS_STEP_KERNEL, NUMTHREADS_STEP_KERNEL, 1)]
+void StepKernel(uint3 id : SV_DispatchThreadID)
+{
+	uint currentState = readTexture[id.xy];
+
+	uint nextState = currentState + 1 == statesAmount ? 0 : currentState + 1;
+
+	uint neighborCount = GetNeighborCount(id, nextState);
+
+	if(neighborCount >= threshold)
+	{
+		currentState = nextState;
+	}
+
+	writeTexture[id.xy] = currentState;
+
+	Render(id, currentState, neighborCount, nextState);
+}
