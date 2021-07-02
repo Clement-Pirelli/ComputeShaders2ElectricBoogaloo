@@ -53,7 +53,7 @@ public class SmoothLifeScript : ComputeShaderScript
     void Start()
     {
         Random.InitState(System.DateTime.Now.Second);
-        Reset();
+        ResetState();
     }
 
     [Header("Randomization")]
@@ -78,7 +78,7 @@ public class SmoothLifeScript : ComputeShaderScript
     Texture2D image;
 
     [Button]
-    override protected void Reset()
+    override protected void ResetState()
     {
         readTexture = CreateRenderTexture(RenderTextureFormat.RFloat);
         writeTexture = CreateRenderTexture(RenderTextureFormat.RFloat);
@@ -100,7 +100,7 @@ public class SmoothLifeScript : ComputeShaderScript
         computeShader.SetInt("colorAmount", colorAmount);
         computeShader.SetVectorArray("colors", colors.asVector4s());
 
-        if (resetOnUpdate) Reset();
+        if (resetOnUpdate) ResetState();
     }
     
     override protected void Step()
@@ -113,7 +113,7 @@ public class SmoothLifeScript : ComputeShaderScript
 
         SwapTextures();
 
-        outMaterial.SetTexture("_UnlitColorMap", outTexture);
+        outMaterial.SetTexture("_MainTex", outTexture);
     }
 
     RenderTexture CreateRenderTexture(RenderTextureFormat format)

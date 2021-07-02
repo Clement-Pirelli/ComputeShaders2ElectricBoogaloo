@@ -17,7 +17,7 @@ public abstract class ComputeShaderScript : MonoBehaviour
     void Start()
     {
         Random.InitState(System.DateTime.Now.Second);
-        Reset();
+        ResetState();
     }
 
     float accTime = .0f;
@@ -31,7 +31,7 @@ public abstract class ComputeShaderScript : MonoBehaviour
         }
     }
 
-    protected abstract void Reset();
+    protected abstract void ResetState();
     protected abstract void Step();
     protected virtual void ReleaseResources() { }
 

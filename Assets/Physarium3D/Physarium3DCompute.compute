@@ -1,0 +1,311 @@
+﻿#pragma kernel ResetTextureKernel
+#pragma kernel ResetAgentsKernel
+#pragma kernel MoveAgentsKernel
+#pragma kernel TrailsKernel
+#pragma kernel DecayKernel
+#pragma kernel RenderKernel
+//#pragma enable_d3d11_debug_symbols
+
+Texture3D<float> readTexture;
+SamplerState sampler_readTexture;
+
+RWTexture3D<float> writeTexture;
+RWTexture3D<float4> renderTexture;
+
+struct RandState 
+{
+	uint state;
+};
+
+RWStructuredBuffer<RandState> randStates;
+
+#define NUMTHREADS_AGENTS 64
+#define NUMTHREADS_RESOLUTION 8
+
+const float pi = 3.141592;
+
+//sight
+int range;
+float lineOfSight;
+
+//trail
+float trailDetectionThreshold;
+float trailApproximationBias;
+float trailStrengthPerAgent;
+float trailDecayFactor;
+
+float alpha;
+
+float4 dim;
+float4 bright;
+float cutoffThreshold;
+
+//setup
+int resolution;
+float time;
+
+float agentSpeed;
+
+float sphereRadius;
+int usingSphere;
+
+int usingCullingPlane;
+float4 planeNormal;
+float4 planeOrigin;
+
+struct Agent
+{
+	float3 position;
+	float3 direction;
+};
+
+RWStructuredBuffer<Agent> agents;
+ 
+////////////////////////////// UTILITIES ////////////////////////////////////////
+struct Plane
+{
+	float3 normal;
+	float3 origin;
+};
+
+bool culledByPlane(float3 position, Plane plane)
+{
+	return dot(normalize(position - plane.origin), plane.normal) < .0;
+}
+
+Plane currentPlane()
+{
+	Plane p;
+	p.normal = planeNormal.xyz;
+	p.origin = planeOrigin.xyz;
+	return p;
+}
+
+bool isApproximately(float a, float b, float approx)
+{
+	return ((a - approx) <= b) && ((a + approx) >= b);
+}
+
+float3 wrapPosition(float3 position)
+{
+	const float resolutionf = float(resolution);
+	if(position.x > resolutionf)
+	{
+		position.x -= resolutionf;
+	}
+	if(position.x < .0f)
+	{
+		position.x += resolutionf;
+	}
+
+	if (position.y > resolutionf)
+	{
+		position.y -= resolutionf;
+	}
+	if (position.y < .0f)
+	{
+		position.y += resolutionf;
+	}
+
+	if (position.z > resolutionf)
+	{
+		position.z -= resolutionf;
+	}
+	if (position.z < .0f)
+	{
+		position.z += resolutionf;
+	}
+
+	return position;
+}
+
+bool withinSphere(float3 position)
+{
+	const float3 delta = position / float(resolution) - float3(.5, .5, .5);
+	return dot(delta, delta) < (sphereRadius*sphereRadius);
+}
+
+uint wangHash(uint seed)
+{
+	seed = (seed ^ 61u) ^ (seed >> 16u);
+	seed *= 9u;
+	seed = seed ^ (seed >> 4u);
+	seed *= 0x27d4eb2du;
+	seed = seed ^ (seed >> 15u);
+	return 1u + seed;
+}
+
+uint xorshift32(inout uint state)
+{
+	/* Algorithm "xor" from p. 4 of Marsaglia, "Xorshift RNGs" */
+	state ^= state << 13u;
+	state ^= state >> 17u;
+	state ^= state << 5u;
+	return state;
+}
+
+float rand(inout uint state)
+{
+	return float(xorshift32(state)) * (1.0 / 4294967296.0);
+}
+
+float2 rand2(inout uint state)
+{
+	return float2(rand(state), rand(state));
+}
+
+float3 rand3(inout uint state)
+{
+	return float3(rand2(state), rand(state));
+}
+
+float3 randDir(inout uint state)
+{
+	//from criver
+	const float2 r = rand2(state);
+	const float cos_theta = 2.0 * r.x - 1.0;
+	const float phi = 2.0 * pi * r.y;
+	const float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+	const float sin_phi = sin(phi);
+	const float cos_phi = cos(phi);
+
+	return float3(sin_theta * cos_phi, cos_theta, sin_theta * sin_phi);
+}
+
+////////////////////////////// DIRECTION CHOICES ////////////////////////////////////////
+
+float3 NeighborhoodTurns(uint3 id, Agent agent, inout uint randState)
+{
+	const uint MAX_VECTORS = 200;
+	float3 directionsStack[MAX_VECTORS]; //some samples might have the exact same amount of trail so we keep a record of the ones which are the same
+	float maxTrail = .0;
+	uint stackIndex = 0;
+
+	for (int z = -range; z <= range; z++)
+	for (int y = -range; y <= range; y++)
+	for (int x = -range; x <= range; x++)
+	{
+		if (x == 0 && y == 0 && z == 0) continue;
+		
+		const float3 current = float3(x, y, z);
+		const float3 normalizedDirection = normalize(current);
+		
+		if (dot(normalizedDirection, agent.direction) <= lineOfSight) continue;
+		
+		const uint3 coordinates = round(agent.position + current);
+
+		const float level = readTexture.SampleLevel(sampler_readTexture, coordinates / (float)resolution, .0);
+
+		if (isApproximately(level, maxTrail, trailApproximationBias))
+		{
+			directionsStack[stackIndex] = normalizedDirection;
+			stackIndex = uint(stackIndex+1) % (MAX_VECTORS-1);
+		}
+		else if (level > maxTrail)
+		{
+			maxTrail = level;
+			directionsStack[0] = normalizedDirection;
+			stackIndex = 1u;
+		}
+	}
+
+	if (maxTrail >= trailDetectionThreshold)
+	{
+		const uint index = floor(float(stackIndex) * rand(randState));
+		return normalize(agent.direction+directionsStack[index]);
+	}
+	else
+	{
+		return randDir(randState);
+	}
+}
+////////////////////////////// KERNELS ////////////////////////////////////////
+
+[numthreads(NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION)]
+void ResetTextureKernel(uint3 id : SV_DispatchThreadID)
+{
+	writeTexture[id.xyz] = 0.0;
+}
+
+[numthreads(NUMTHREADS_AGENTS, 1, 1)]
+void ResetAgentsKernel(uint3 id : SV_DispatchThreadID)
+{
+	Agent agent;
+	RandState initialRandState;
+
+	initialRandState.state = wangHash(id.x);
+
+	agent.direction = randDir(initialRandState.state);
+	do
+	{
+		agent.position = rand3(initialRandState.state) * (float)resolution;
+	} while (!withinSphere(agent.position) && (usingSphere == 1));
+
+	randStates[id.x] = initialRandState;
+	agents[id.x] = agent;
+}
+
+[numthreads(NUMTHREADS_AGENTS, 1, 1)]
+void TrailsKernel(uint3 id :  SV_DispatchThreadID)
+{
+	const Agent agent = agents[id.x];
+	writeTexture[round(agent.position)] = saturate(writeTexture[round(agent.position)] + trailStrengthPerAgent);
+}
+
+[numthreads(NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION)]
+void DecayKernel(uint3 id : SV_DispatchThreadID)
+{
+	float average = .0;
+	for (int z = -1; z <= 1; z++)
+	for (int y = -1; y <= 1; y++)
+	for (int x = -1; x <= 1; x++)
+	{
+		const float3 position = wrapPosition(int3(id) + int3(x, y, z));
+		average += readTexture[position];
+	}
+
+	const float result = saturate(average * (1.0 / 27.0) * trailDecayFactor);
+
+	writeTexture[id.xyz] = result;
+}
+
+[numthreads(NUMTHREADS_AGENTS, 1, 1)]
+void MoveAgentsKernel(uint3 id : SV_DispatchThreadID)
+{
+	Agent agent = agents[id.x];
+	RandState randState = randStates[id.x];
+
+	agent.direction = NeighborhoodTurns(id, agent, randState.state);
+
+	agent.position += agent.direction * agentSpeed;
+	agent.position = wrapPosition(agent.position);
+
+	randStates[id.x] = randState;
+	agents[id.x] = agent;
+}
+
+
+[numthreads(NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION)]
+void RenderKernel(uint3 id : SV_DispatchThreadID)
+{
+	const float4 nothing = float4(.0, .0, .0, .0);
+	const float3 currentNormalizedPosition = int3(id.xyz) / float(resolution);
+	if(usingCullingPlane && culledByPlane(currentNormalizedPosition, currentPlane()))
+	{
+		renderTexture[id] = nothing;
+	} else 
+	{
+		const float read = readTexture[id];
+
+		if (read <= cutoffThreshold)
+		{
+			renderTexture[id] = nothing;
+		}
+		else
+		{
+			const float t = (read - cutoffThreshold) / (1.0 - cutoffThreshold);
+			const float4 color = lerp(dim, bright, t);
+			renderTexture[id] = float4(color.xyz, read);
+		}
+	}
+}

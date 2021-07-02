@@ -82,11 +82,11 @@ public class CCAScript : ComputeShaderScript
     {
         Randomize();
         PickColors();
-        Reset();
+        ResetState();
     }
 
     [Button]
-    protected override void Reset()
+    protected override void ResetState()
     {
         readTexture = CreateRenderTexture(RenderTextureFormat.RFloat);
         writeTexture = CreateRenderTexture(RenderTextureFormat.RFloat);
@@ -138,7 +138,7 @@ public class CCAScript : ComputeShaderScript
     void RandomizeAndReset()
     {
         Randomize();
-        Reset();
+        ResetState();
     }
 
     [Button]
