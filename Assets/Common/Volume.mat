@@ -60,19 +60,19 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Floats:
-    - _Alpha: 0.3
+    - _Alpha: 0.4
     - _BeerPowderRatio: 1
     - _BumpScale: 1
     - _Cutoff: 0.5
-    - _DensityMultiplier: 2
+    - _DensityMultiplier: 5
     - _DetailNormalMapScale: 1
     - _DstBlend: 0
     - _GlossMapScale: 1
     - _Glossiness: 0.5
     - _GlossyReflections: 1
-    - _LightMaxSteps: 80
-    - _LightStepSize: 0.04
-    - _LightStrength: 3
+    - _LightMaxSteps: 100
+    - _LightStepSize: 0.05
+    - _LightStrength: 1
     - _MaxSteps: 300
     - _Metallic: 0
     - _Mode: 0
@@ -81,12 +81,12 @@ Material:
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
-    - _StepSize: 0.015
+    - _StepSize: 0.006
     - _UVSec: 0
     - _UsePowder: 1
     - _ZWrite: 1
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-    - _LightColor: {r: 1, g: 0.8820755, b: 0.8820755, a: 1}
+    - _LightColor: {r: 1, g: 1, b: 1, a: 1}
     - _LightDirection: {r: 7.25, g: 9.98, b: -3.63, a: 0}

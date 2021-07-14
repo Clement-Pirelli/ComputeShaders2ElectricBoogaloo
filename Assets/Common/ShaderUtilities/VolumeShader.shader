@@ -149,7 +149,7 @@
                     for (int i = 0; i < _MaxSteps; i++)
                     {
                         const float4 cloud = SampleCloud(samplePosition);
-                        const float density = cloud.a; 
+                        const float density = cloud.a;
                         if (density > notDenseEnough)
                         {
                             transmittance *= 1. - density;
@@ -161,7 +161,7 @@
                             lightEnergy.a += density;
                         }
                         samplePosition += fixedStep;
-                        if (!WithinUnitCube(samplePosition))
+                        if (!WithinUnitCube(samplePosition) || transmittance < .0001)
                         {
                             break;
                         }

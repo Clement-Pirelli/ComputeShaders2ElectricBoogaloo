@@ -1,6 +1,8 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+#pragma warning disable CS0649 //disable Serializefield private warnings
+
 
 public class Spin : MonoBehaviour
 {

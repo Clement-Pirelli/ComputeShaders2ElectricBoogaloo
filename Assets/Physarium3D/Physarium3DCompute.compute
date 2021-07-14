@@ -5,17 +5,14 @@
 #pragma kernel DecayKernel
 #pragma kernel RenderKernel
 //#pragma enable_d3d11_debug_symbols
+#include "Assets/Common/ShaderUtilities/plane.hlsl"
+#include "Assets/Common/ShaderUtilities/random.hlsl"
 
 Texture3D<float> readTexture;
 SamplerState sampler_readTexture;
 
 RWTexture3D<float> writeTexture;
 RWTexture3D<float4> renderTexture;
-
-struct RandState 
-{
-	uint state;
-};
 
 RWStructuredBuffer<RandState> randStates;
 
@@ -62,16 +59,6 @@ struct Agent
 RWStructuredBuffer<Agent> agents;
  
 ////////////////////////////// UTILITIES ////////////////////////////////////////
-struct Plane
-{
-	float3 normal;
-	float3 origin;
-};
-
-bool culledByPlane(float3 position, Plane plane)
-{
-	return dot(normalize(position - plane.origin), plane.normal) < .0;
-}
 
 Plane currentPlane()
 {
@@ -123,53 +110,6 @@ bool withinSphere(float3 position)
 {
 	const float3 delta = position / float(resolution) - float3(.5, .5, .5);
 	return dot(delta, delta) < (sphereRadius*sphereRadius);
-}
-
-uint wangHash(uint seed)
-{
-	seed = (seed ^ 61u) ^ (seed >> 16u);
-	seed *= 9u;
-	seed = seed ^ (seed >> 4u);
-	seed *= 0x27d4eb2du;
-	seed = seed ^ (seed >> 15u);
-	return 1u + seed;
-}
-
-uint xorshift32(inout uint state)
-{
-	/* Algorithm "xor" from p. 4 of Marsaglia, "Xorshift RNGs" */
-	state ^= state << 13u;
-	state ^= state >> 17u;
-	state ^= state << 5u;
-	return state;
-}
-
-float rand(inout uint state)
-{
-	return float(xorshift32(state)) * (1.0 / 4294967296.0);
-}
-
-float2 rand2(inout uint state)
-{
-	return float2(rand(state), rand(state));
-}
-
-float3 rand3(inout uint state)
-{
-	return float3(rand2(state), rand(state));
-}
-
-float3 randDir(inout uint state)
-{
-	//from criver
-	const float2 r = rand2(state);
-	const float cos_theta = 2.0 * r.x - 1.0;
-	const float phi = 2.0 * pi * r.y;
-	const float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-	const float sin_phi = sin(phi);
-	const float cos_phi = cos(phi);
-
-	return float3(sin_theta * cos_phi, cos_theta, sin_theta * sin_phi);
 }
 
 ////////////////////////////// DIRECTION CHOICES ////////////////////////////////////////

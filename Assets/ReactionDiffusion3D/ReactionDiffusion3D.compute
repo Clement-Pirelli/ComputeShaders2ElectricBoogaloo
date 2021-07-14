@@ -1,0 +1,122 @@
+﻿#pragma kernel StepKernel
+#pragma kernel RenderKernel
+#pragma kernel ResetKernel
+//#pragma enable_d3d11_debug_symbols
+#include "Assets/Common/ShaderUtilities/plane.hlsl"
+
+Texture3D<float4> readTexture;
+RWTexture3D<float4> writeTexture;
+RWTexture3D<float4> renderTexture;
+
+#define NUMTHREADS_RESOLUTION 8
+
+int resolution;
+float deltaTime;
+
+//---- reaction-diffusion constants
+float firstDiffusionRate;
+float growthRate;
+float growthVariation;
+
+float secondDiffusionRate;
+float deathRate;
+float deathVariation;
+float maxAmount;
+float speed;
+float startRadius;
+int laplacianType;
+
+int usingCullingPlane;
+float4 planeNormal;
+float4 planeOrigin;
+
+float getLaplacian(int3 coord, bool twentySevenPoint)
+{
+    const int3 coordAbs = abs(coord);
+    const int total = coordAbs.x + coordAbs.y + coordAbs.z;
+    if(twentySevenPoint)
+    {
+        float result = .0f;
+        switch(total)
+        {
+        case 0: result = -88.0; break;
+        case 1: result = 6.0; break;
+        case 2: result = 3.0; break;
+        case 3: result = 2.0; break;
+        }
+        result /= 26.0;
+        return result;
+    } else 
+    {
+        switch (total)
+        {
+        case 0: return -6.0;
+        case 1: return 1.0;
+        default: return .0;
+        }
+    }
+}
+
+float2 applyKernel(uint3 id)
+{
+    float2 afterKernel = float2(.0,.0);
+    for (int i = 0; i < 27; i++)
+    {
+        const int z = int(i % 3u) - 1;
+        const int y = int((i / 3u) % 3u) - 1;
+        const int x = int(i / (9u)) - 1;
+        const int3 coord = int3(x, y, z);
+        const int3 samplePosition = (int3(id) + coord);
+        afterKernel += readTexture[samplePosition % resolution].xy * getLaplacian(coord, laplacianType == 0);
+    }
+
+    return afterKernel;
+}
+
+[numthreads(NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION)]
+void ResetKernel(uint3 id : SV_DispatchThreadID)
+{
+    const float3 position01 = float3(id.xyz) / float(resolution);
+    writeTexture[id] = float4(1.0, distance(position01, float3(.5,.5,.5)) < startRadius ? .8 : .0, .0,.0);
+}
+
+[numthreads(NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION)]
+void StepKernel (uint3 id : SV_DispatchThreadID)
+{
+    const float2 lastFrame = clamp(readTexture[id].xy, .0, maxAmount);
+    
+    const float2 diffusionRates = float2(firstDiffusionRate, secondDiffusionRate);
+    const float2 diffusion = applyKernel(id) * diffusionRates;
+    
+    //todo: change growth/death rate based on position in buffer
+    //const float2 position01 = id / float(resolution);
+    const float currentGrowthRate = growthRate;//lerp(growthRate - growthVariation, growthRate + growthVariation, bufferUV.x);
+    const float currentDeathRate = deathRate;//lerp(deathRate - deathVariation, deathRate + deathVariation, bufferUV.y);
+    
+    const float reactionAmount = lastFrame.x * lastFrame.y * lastFrame.y;
+    const float2 change = diffusion + float2(
+        -reactionAmount + currentGrowthRate * (maxAmount - lastFrame.x),
+        reactionAmount - (currentGrowthRate + currentDeathRate) * lastFrame.y
+    );
+
+    writeTexture[id] = float4(clamp(lastFrame + change * speed * deltaTime, .0, maxAmount), .0, .0);
+}
+
+[numthreads(NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION)]
+void RenderKernel(uint3 id : SV_DispatchThreadID)
+{
+    const float4 nothing = float4(.0, .0, .0, .0);
+    const float3 currentNormalizedPosition = int3(id.xyz) / float(resolution);
+    Plane plane;
+    plane.normal = planeNormal.xyz;
+    plane.origin = planeOrigin.xyz;
+
+    if (usingCullingPlane && culledByPlane(currentNormalizedPosition, plane))
+    {
+        renderTexture[id] = nothing;
+    } else
+    {
+        const float read = readTexture[id].y;
+        renderTexture[id] = float4(1.0, 1.0, 1.0, read);
+    }
+}
