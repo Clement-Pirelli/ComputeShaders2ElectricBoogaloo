@@ -37,7 +37,8 @@ public class ReactionDiffusion3DScript : ComputeShaderScript
 
     [SerializeField]
     CullingPlane plane;
-
+    [SerializeField]
+    ColorPalette palette;
     public enum LaplacianType 
     {
         TwentySevenPoint,
@@ -46,7 +47,6 @@ public class ReactionDiffusion3DScript : ComputeShaderScript
 
     [SerializeField]
     LaplacianType laplacianType;
-
 
     [SerializeField]
     int resolution = 256;
@@ -105,6 +105,7 @@ public class ReactionDiffusion3DScript : ComputeShaderScript
             computeShader.SetTexture(renderKernel.value, "renderTexture", renderTexture);
             computeShader.SetTexture(renderKernel.value, "readTexture", frameCount % 2 == 0 ? readTexture : writeTexture);
             plane.UploadToComputeShader(computeShader);
+            palette.UploadToComputeShader(computeShader);
             DispatchKernel(renderKernel);
         }
 

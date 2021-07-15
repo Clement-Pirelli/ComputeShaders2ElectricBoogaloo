@@ -21,6 +21,21 @@ public static class MyExtensions
     }
 }
 
+public static class Math 
+{
+    public struct Range<T>
+    {
+        public T start;
+        public T end;
+        public Range(T start, T end) { this.start = start; this.end = end; }
+    }
+    public static float Remap(float value, Range<float> original, Range<float> transformed) 
+    {
+        float t = Mathf.InverseLerp(original.start, original.end, value);
+        return Mathf.Lerp(transformed.start, transformed.end, t);
+    }
+}
+
 public static class CSUtilities
 {
     public static RenderTexture CreateRenderTexture(int resolution, FilterMode filterMode, RenderTextureFormat format)

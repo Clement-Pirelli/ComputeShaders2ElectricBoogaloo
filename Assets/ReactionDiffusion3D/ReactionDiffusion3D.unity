@@ -310,7 +310,7 @@ MonoBehaviour:
   target: {fileID: 316897057}
   radius: 2
   elevation: 1
-  speed: 0
+  speed: 0.1
 --- !u!1 &316897053
 GameObject:
   m_ObjectHideFlags: 0
@@ -413,6 +413,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1591997844}
   - component: {fileID: 1591997843}
+  - component: {fileID: 1591997845}
   m_Layer: 0
   m_Name: Code
   m_TagString: Untagged
@@ -434,18 +435,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   computeShader: {fileID: 7200000, guid: 552557e45e4bbb042b4759f7404afde0, type: 3}
   outMaterial: {fileID: 2100000, guid: e46700567bdc52c499953a85dcdb7b50, type: 2}
-  simulationSpeed: 1
-  firstDiffusionRate: 0.2
+  simulationSpeed: 2
+  firstDiffusionRate: 0.21
   growthRate: 0.02
   growthVariation: 0
   secondDiffusionRate: 0.05
   deathRate: 0.062
   deathVariation: 0
   maxAmount: 1
-  speed: 50
-  startRadius: 0.2
+  speed: 20
+  startRadius: 0.4
   plane: {fileID: 11400000, guid: d0f891b589789ae4c93f0305030c605b, type: 2}
-  laplacianType: 0
+  palette: {fileID: 11400000, guid: 67f60ac2a468709468ae94631de68b75, type: 2}
+  laplacianType: 1
   resolution: 128
 --- !u!4 &1591997844
 Transform:
@@ -461,3 +463,17 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1591997845
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1591997842}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 76ce7843192aa224bb8db1b1e2036573, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  speed: 1
+  cullingPlane: {fileID: 11400000, guid: d0f891b589789ae4c93f0305030c605b, type: 2}
