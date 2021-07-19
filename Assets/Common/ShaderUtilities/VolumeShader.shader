@@ -141,7 +141,7 @@
                     float4 lightEnergy = float4(.0, .0, .0, .0);
 
                     LightDensityArgs lightDensityArgs;
-                    const float3 lightDirection = mul(unity_WorldToObject, float4(normalize(_LightDirection.xyz), 0));
+                    const float3 lightDirection = mul(unity_WorldToObject, float4(normalize(_LightDirection.xyz), 0)).xyz;
                     lightDensityArgs.fixedStep = lightDirection * _LightStepSize;
 
 

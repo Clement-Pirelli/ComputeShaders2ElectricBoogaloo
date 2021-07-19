@@ -1,0 +1,86 @@
+﻿#pragma kernel ResetAgentsKernel
+#pragma kernel MoveAgentsKernel
+
+#include "Assets/Common/ShaderUtilities/random.hlsl"
+
+#define NUMTHREAD_AGENTS 32
+
+struct Agent
+{
+	float2 position;
+	float angle;
+	int neighbors;
+};
+
+StructuredBuffer<Agent> agents;
+RWStructuredBuffer<Agent> nextAgents;
+
+int randomSeed;
+
+float agentSpeed;
+float neighborhoodRadius;
+float constantAngle;
+float neighborsAngle;
+int agentsCount;
+int domainSize;
+
+[numthreads(NUMTHREAD_AGENTS, 1, 1)]
+void ResetAgentsKernel(uint3 id : SV_DispatchThreadID)
+{
+	Agent a;
+	uint seed = wangHash(id.x + randomSeed);
+	a.position = rand2(seed) * float(domainSize);
+	a.angle = rand(seed) * 6.28318;
+	a.neighbors = 0;
+	nextAgents[id.x] = a;
+}
+
+[numthreads(NUMTHREAD_AGENTS, 1, 1)]
+void MoveAgentsKernel(uint3 id : SV_DispatchThreadID)
+{
+	Agent agent = agents[id.x];
+
+	const float2 currentDirection = float2(cos(agent.angle), sin(agent.angle));
+	const float2 perpendicular = float2(cos(agent.angle + 1.5708), sin(agent.angle + 1.5708));
+	int rightNeighborCount = 0;
+	int leftNeighborCount = 0;
+
+	[loop]
+	for(uint i = 0; i < uint(agentsCount); i++)
+	{
+		if (i == id.x) continue;
+
+		const float2 toAgent = agents[i].position - agent.position;
+		const float distanceToAgentSquared = dot(toAgent, toAgent);
+		if(distanceToAgentSquared <= neighborhoodRadius * neighborhoodRadius)
+		{
+			const float2 directionToAgent = normalize(toAgent);
+			
+			if(dot(directionToAgent, perpendicular) > .0) 
+			{
+				rightNeighborCount++;
+			} else
+			{
+				leftNeighborCount++;
+			}
+		}
+	}
+
+	const int totalNeighborCount = rightNeighborCount + leftNeighborCount;
+	agent.neighbors = totalNeighborCount;
+	agent.angle += constantAngle + neighborsAngle * float(totalNeighborCount) * sign(rightNeighborCount - leftNeighborCount);
+	
+	const float2 direction = float2(cos(agent.angle), sin(agent.angle));
+	agent.position += direction * agentSpeed;
+	agent.position = agent.position % float2(domainSize, domainSize);
+	if (agent.position.x < .0) 
+	{
+		agent.position.x += domainSize;
+	}
+	if(agent.position.y < .0)
+	{
+		agent.position.y += domainSize;
+	}
+
+	nextAgents[id.x] = agent;
+}

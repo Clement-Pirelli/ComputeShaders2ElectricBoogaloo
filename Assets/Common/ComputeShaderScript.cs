@@ -29,10 +29,12 @@ public abstract class ComputeShaderScript : MonoBehaviour
             Step();
             accTime = .0f;
         }
+        Render();
     }
 
     protected abstract void ResetState();
     protected abstract void Step();
+    protected virtual void Render() { }
     protected virtual void ReleaseResources() { }
 
     private void OnDestroy() => ReleaseResources();

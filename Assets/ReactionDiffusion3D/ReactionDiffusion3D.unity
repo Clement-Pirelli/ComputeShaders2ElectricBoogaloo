@@ -447,7 +447,7 @@ MonoBehaviour:
   startRadius: 0.4
   plane: {fileID: 11400000, guid: d0f891b589789ae4c93f0305030c605b, type: 2}
   palette: {fileID: 11400000, guid: 67f60ac2a468709468ae94631de68b75, type: 2}
-  laplacianType: 1
+  laplacianType: 0
   resolution: 128
 --- !u!4 &1591997844
 Transform:

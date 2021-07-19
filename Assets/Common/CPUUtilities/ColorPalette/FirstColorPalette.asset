@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b4d5c50f8380c0c4aa0311e0b94a04ba, type: 3}
   m_Name: FirstColorPalette
   m_EditorClassIdentifier: 
-  a: {x: 0.5, y: 0.5, z: 0.5}
+  a: {x: 0.53, y: 0.32, z: 0.28}
   b: {x: 0.5, y: 0.5, z: 0.5}
-  c: {x: 1, y: 1, z: 0.5}
-  d: {x: 0.08, y: 0.5, z: 0.99}
+  c: {x: 1, y: 0.5, z: 0.52}
+  d: {x: 0.46, y: 0.38, z: 0.54}

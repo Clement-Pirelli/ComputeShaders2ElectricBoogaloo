@@ -49,3 +49,9 @@ float3 randDir(inout uint state)
 
 	return float3(sin_theta * cos_phi, cos_theta, sin_theta * sin_phi);
 }
+
+float2 randDir2(uint seed)
+{
+	const float angle = rand(seed) * 2.0 * 3.1415926524;
+	return float2(cos(angle), sin(angle));
+}

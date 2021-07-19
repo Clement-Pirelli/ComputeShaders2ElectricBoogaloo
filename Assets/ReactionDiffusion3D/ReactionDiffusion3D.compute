@@ -95,7 +95,9 @@ float2 applyKernel(uint3 id)
 void ResetKernel(uint3 id : SV_DispatchThreadID)
 {
     const float3 position01 = float3(id.xyz) / float(resolution);
-    writeTexture[id] = float4(1.0, distance(position01, float3(.5,.5,.5)) < startRadius ? .8 : .0, .0,.0);
+    const bool inCircle = distance(position01, float3(.5, .5, .5)) < startRadius;
+    //const bool inPancake = abs(position01.y - .5) < .01;
+    writeTexture[id] = float4(1.0, (inCircle) ? .8 : .0, .0,.0);
 }
 
 [numthreads(NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION)]
@@ -107,9 +109,9 @@ void StepKernel (uint3 id : SV_DispatchThreadID)
     const float2 diffusion = applyKernel(id) * diffusionRates;
     
     //todo: change growth/death rate based on position in buffer
-    //const float2 position01 = id / float(resolution);
-    const float currentGrowthRate = growthRate;//lerp(growthRate - growthVariation, growthRate + growthVariation, bufferUV.x);
-    const float currentDeathRate = deathRate;//lerp(deathRate - deathVariation, deathRate + deathVariation, bufferUV.y);
+    const float3 position01 = float3(id.xyz) / float(resolution); 
+    const float currentGrowthRate = lerp(growthRate - growthVariation, growthRate + growthVariation, position01.x);
+    const float currentDeathRate = lerp(deathRate - deathVariation, deathRate + deathVariation, position01.z);
     
     const float reactionAmount = lastFrame.x * lastFrame.y * lastFrame.y;
     const float2 change = diffusion + float2(
@@ -135,6 +137,6 @@ void RenderKernel(uint3 id : SV_DispatchThreadID)
     } else
     {
         const float read = readTexture[id].y;
-        renderTexture[id] = float4(pal(smoothstep(.0, 1.0, read)), read);
+        renderTexture[id] = float4(pal(read), read);
     }
 }
