@@ -85,15 +85,17 @@ public class CCAScript : ComputeShaderScript
         ResetState();
     }
 
-    [Button]
-    protected override void ResetState()
+    protected override void SetupResources()
     {
         readTexture = CreateRenderTexture(RenderTextureFormat.RFloat);
         writeTexture = CreateRenderTexture(RenderTextureFormat.RFloat);
         outTexture = CreateRenderTexture(RenderTextureFormat.ARGBFloat);
 
         stepKernel = computeShader.FindKernel("StepKernel");
+    }
 
+    protected override void ResetState()
+    {
         DispatchResetKernel();
     }
 

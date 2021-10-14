@@ -6,9 +6,9 @@ using UnityEngine;
 
 public class ReactionDiffusion3DScript : ComputeShaderScript
 {
-    ComputeKernel stepKernel = new ComputeKernel("StepKernel");
-    ComputeKernel renderKernel = new ComputeKernel("RenderKernel");
-    ComputeKernel resetKernel = new ComputeKernel("ResetKernel");
+    int stepKernel;
+    int renderKernel;
+    int resetKernel;
 
     RenderTexture readTexture;
     RenderTexture writeTexture;
@@ -56,17 +56,21 @@ public class ReactionDiffusion3DScript : ComputeShaderScript
     const int NUMTHREADS_RESOLUTION = 8;
     public int toDispatch { get { return resolution / NUMTHREADS_RESOLUTION; } }
 
-    [NaughtyAttributes.Button("Reset")]
-    protected override void ResetState()
+
+    protected override void SetupResources()
     {
-        stepKernel.Find(computeShader);
-        renderKernel.Find(computeShader);
-        resetKernel.Find(computeShader);
+        stepKernel = computeShader.FindKernel("StepKernel");
+        renderKernel = computeShader.FindKernel("RenderKernel");
+        resetKernel = computeShader.FindKernel("ResetKernel");
 
         readTexture = CSUtilities.Create3DRenderTexture(resolution, FilterMode.Point, RenderTextureFormat.ARGBFloat);
         writeTexture = CSUtilities.Create3DRenderTexture(resolution, FilterMode.Point, RenderTextureFormat.ARGBFloat);
         renderTexture = CSUtilities.Create3DRenderTexture(resolution, FilterMode.Point, RenderTextureFormat.ARGBFloat);
-        
+    }
+
+    [NaughtyAttributes.Button("Reset")]
+    protected override void ResetState()
+    {
         computeShader.SetFloat("startRadius", startRadius);
         computeShader.SetInt("resolution", resolution);
         DispatchResetKernels();
@@ -74,10 +78,10 @@ public class ReactionDiffusion3DScript : ComputeShaderScript
 
     void DispatchResetKernels() 
     {
-        computeShader.SetTexture(resetKernel.value, "writeTexture", writeTexture); 
+        computeShader.SetTexture(resetKernel, "writeTexture", writeTexture); 
         DispatchKernel(resetKernel);
 
-        computeShader.SetTexture(resetKernel.value, "writeTexture", readTexture); //this is normal, we're resetting
+        computeShader.SetTexture(resetKernel, "writeTexture", readTexture); //this is normal, we're resetting
         DispatchKernel(resetKernel);
     }
 
@@ -95,15 +99,15 @@ public class ReactionDiffusion3DScript : ComputeShaderScript
         computeShader.SetFloat("speed", speed);
         computeShader.SetInt("laplacianType", laplacianType == LaplacianType.TwentySevenPoint ? 0 : 1);
         {
-            computeShader.SetTexture(stepKernel.value, "readTexture", readTexture);
-            computeShader.SetTexture(stepKernel.value, "writeTexture", writeTexture);
+            computeShader.SetTexture(stepKernel, "readTexture", readTexture);
+            computeShader.SetTexture(stepKernel, "writeTexture", writeTexture);
             computeShader.SetFloat("deltaTime", Time.deltaTime);
             DispatchKernel(stepKernel);
         }
 
         {
-            computeShader.SetTexture(renderKernel.value, "renderTexture", renderTexture);
-            computeShader.SetTexture(renderKernel.value, "readTexture", frameCount % 2 == 0 ? readTexture : writeTexture);
+            computeShader.SetTexture(renderKernel, "renderTexture", renderTexture);
+            computeShader.SetTexture(renderKernel, "readTexture", frameCount % 2 == 0 ? readTexture : writeTexture);
             plane.UploadToComputeShader(computeShader);
             palette.UploadToComputeShader(computeShader);
             DispatchKernel(renderKernel);
@@ -114,9 +118,9 @@ public class ReactionDiffusion3DScript : ComputeShaderScript
         outMaterial.SetTexture("_MainTex", renderTexture);
     }
     
-    void DispatchKernel(ComputeKernel k) 
+    void DispatchKernel(int k) 
     {
-        computeShader.Dispatch(k.value, toDispatch, toDispatch, toDispatch);
+        computeShader.Dispatch(k, toDispatch, toDispatch, toDispatch);
     }
 
     void SwapTextures()

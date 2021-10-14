@@ -1,0 +1,111 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!181963792 &2655988077585873504
+Preset:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: blue_waves
+  m_TargetType:
+    m_NativeTypeID: 114
+    m_ManagedTypePPtr: {fileID: 11500000, guid: 22a1ee90175ae4040ac5b58bac6db1d5,
+      type: 3}
+    m_ManagedTypeFallback: 
+  m_Properties:
+  - target: {fileID: 0}
+    propertyPath: m_Enabled
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: m_EditorHideFlags
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: m_EditorClassIdentifier
+    value: 
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: computeShader
+    value: 
+    objectReference: {fileID: 7200000, guid: a5c6cd35b547ab7459f8c2de8d19b7a7, type: 3}
+  - target: {fileID: 0}
+    propertyPath: outMaterial
+    value: 
+    objectReference: {fileID: 2100000, guid: a822cc56f20801a49b24000ab376b676, type: 2}
+  - target: {fileID: 0}
+    propertyPath: simulationSpeed
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: constantAngle
+    value: 0.07
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: neighborsAngle
+    value: 0.09
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: radius
+    value: 0.4
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: agentSpeed
+    value: 0.1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: domainSize
+    value: 50
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: agentsCount
+    value: 4096
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: agentRadius
+    value: 0.2
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: neighborMax
+    value: 7.96
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: smoothing
+    value: 1.55
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: dimColor.r
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: dimColor.g
+    value: 0.10434648
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: dimColor.b
+    value: 0.4811321
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: dimColor.a
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: brightColor.r
+    value: 0.58426756
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: brightColor.g
+    value: 0.6415094
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: brightColor.b
+    value: 0.29957277
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: brightColor.a
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: resolution
+    value: 1024
+    objectReference: {fileID: 0}

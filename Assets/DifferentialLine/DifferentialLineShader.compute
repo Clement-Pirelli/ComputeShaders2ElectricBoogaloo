@@ -1,0 +1,173 @@
+﻿#pragma kernel updateKernel
+#pragma kernel resetKernel
+#pragma kernel renderKernel
+#pragma kernel resetTextureKernel
+#pragma enable_d3d11_debug_symbols
+
+//todo: instead of an append buffer, have a separate buffer for the count since both buffers are supposed to have the same count
+
+
+#define NUMTHREADS_POINTS 32
+#define NUMTHREADS_RESOLUTION 32
+
+#define EPSILON .000001
+
+RWTexture2D<float4> outTexture;
+
+struct Node
+{
+	float2 position;
+	uint previous;
+	uint next;
+};
+
+AppendStructuredBuffer<Node> appendBuffer;
+RWStructuredBuffer<Node> writeBuffer;
+StructuredBuffer<Node> readBuffer;
+
+int resolution;
+int maxCount;
+float initialRadius;
+int initialCount;
+
+float maxConnectionLength;
+
+float repulsionRadius;
+float minNeighborDist;
+
+float movementSpeed;
+
+float2 stickToNeighbor(Node currentNode, Node neighborNode) 
+{
+	const float2 delta = neighborNode.position - currentNode.position;
+	const float dist = length(delta);
+	if(dist > minNeighborDist)
+	{
+		return -(delta / dist);
+	}
+	else
+	{
+		return float2(.0, .0);
+	}
+}
+
+[numthreads(NUMTHREADS_POINTS, 1, 1)]
+void updateKernel(uint3 id : SV_DispatchThreadID)
+{
+	Node currentNode = readBuffer[id.x];
+
+
+	//neighbor nodes, want to get closer (within a threshold)
+	const Node previousNode = readBuffer[currentNode.previous];
+	const Node nextNode = readBuffer[currentNode.next];
+
+	float2 neighborMovement = stickToNeighbor(currentNode, previousNode) + stickToNeighbor(currentNode, nextNode);
+	const float neighborMovementLength = length(neighborMovement);
+	if (neighborMovementLength > EPSILON) 
+	{
+		neighborMovement = neighborMovement / neighborMovementLength;
+	}
+
+	//non-neighbor nodes, want to keep their distance
+	uint nodeCount;
+	uint _;
+	readBuffer.GetDimensions(nodeCount, _);
+
+	int neighborsCount = 0;
+	float2 repulsionMovement = float2(.0, .0);
+	for (uint i = 0; i < nodeCount; i++)
+	{
+		if (i == id.x
+			|| i == currentNode.previous
+			|| i == currentNode.next)
+		{
+			continue;
+		}
+
+		Node otherNode = readBuffer[i];
+		const float2 delta = currentNode.position - otherNode.position;
+		const float deltaLength = length(delta);
+		if (deltaLength > EPSILON && deltaLength <= repulsionRadius)
+		{
+			repulsionMovement += delta / deltaLength;
+		}
+	}
+	
+	const float2 movement = neighborMovement + repulsionMovement;
+	const float movementLength = length(movement);
+	if (movementLength > EPSILON)
+	{
+		currentNode.position += movement / movementLength * movementSpeed;
+		writeBuffer[id.x] = currentNode;
+	}
+}
+
+[numthreads(NUMTHREADS_POINTS, 1, 1)]
+void resetKernel(uint3 id : SV_DispatchThreadID)
+{
+	const float angle = (float)id.x / (float)initialCount * 2.0 * 3.14;
+	const float2 position = 100.0 * (float2(.5,.5) + initialRadius * float2(cos(angle), sin(angle)));
+
+	int previous = ((int)id.x) - 1;
+	if (previous < 0) previous = initialCount - 1;
+
+	uint next = id.x + 1;
+	if (next >= (uint)initialCount) next = 0;
+
+	Node node;
+	node.position = position;
+	node.previous = previous;
+	node.next = next;
+	appendBuffer.Append(node);
+}
+
+
+int2 getCoords(float2 position) 
+{
+	return position * (float)resolution / 100.0;
+}
+
+bool withinScreen(int2 coords)
+{
+	return coords.x > 0 && coords.y > 0 && coords.x < resolution &&coords.y < resolution;
+}
+
+[numthreads(NUMTHREADS_POINTS, 1, 1)]
+void renderKernel(uint3 id : SV_DispatchThreadID)
+{
+	const Node node = readBuffer[id.x];
+	const Node nextNode = readBuffer[node.next];
+
+	int2 nodeCoords = getCoords(node.position);
+	int2 nextNodeCoords = getCoords(nextNode.position);
+	if (nodeCoords.x > nextNodeCoords.x) 
+	{
+		const int2 temp = nodeCoords;
+		nodeCoords = nextNodeCoords;
+		nextNodeCoords = temp;
+	}
+
+	const int2 difference = nextNodeCoords - nodeCoords;
+	int D = 2 * difference.y - difference.x;
+	for (int2 coords = nodeCoords; coords.x <= nextNodeCoords.x; coords.x++)
+	{
+		if (!withinScreen(coords))
+		{
+			break;
+		}
+		outTexture[coords] = float4(1.0, 1.0, 1.0, 1.0);
+
+		if(D > 0)
+		{
+			coords.y++;
+			D -= 2 * difference.x;
+		}
+		D += 2 * difference.y;
+	}
+}
+
+[numthreads(NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION, 1)]
+void resetTextureKernel(uint3 id : SV_DispatchThreadID) 
+{
+	outTexture[id.xy] = float4(.0, .0, .0, 1.0);
+}

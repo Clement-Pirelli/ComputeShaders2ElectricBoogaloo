@@ -77,15 +77,18 @@ public class SmoothLifeScript : ComputeShaderScript
     [SerializeField]
     Texture2D image;
 
-    [Button]
-    override protected void ResetState()
+    protected override void SetupResources()
     {
         readTexture = CreateRenderTexture(RenderTextureFormat.RFloat);
         writeTexture = CreateRenderTexture(RenderTextureFormat.RFloat);
         outTexture = CreateRenderTexture(RenderTextureFormat.ARGBFloat);
 
         stepKernel = computeShader.FindKernel("StepKernel");
+    }
 
+    [Button]
+    override protected void ResetState()
+    {
         DispatchResetKernel();
     }
 

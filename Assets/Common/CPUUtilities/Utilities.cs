@@ -5,9 +5,14 @@ using System.Linq;
 
 public static class MyExtensions
 {
+    public static Vector4 asVector4(this Color color)
+    {
+        return new Vector4(color.r, color.g, color.b, color.a);
+    }
+
     public static Vector4[] asVector4s(this Color[] colors)
     {
-        return colors.Select(c => new Vector4(c.r, c.g, c.b, c.a)).ToArray();
+        return colors.Select(c => c.asVector4()).ToArray();
     }
 
     public static Vector4 asPosition(this Vector3 vector3)

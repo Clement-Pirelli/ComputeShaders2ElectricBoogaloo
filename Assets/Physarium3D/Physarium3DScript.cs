@@ -71,8 +71,6 @@ public class Physarium3DScript : ComputeShaderScript
     int trailKernel;
     int trailDecayKernel;
 
-    int steps;
-
     const float TIME_OFFSET = 2.2312f;
     const int MAX_RANGE = 10;
     const int NUMTHREADS_AGENTS = 64;
@@ -166,11 +164,8 @@ public class Physarium3DScript : ComputeShaderScript
         textures = new List<RenderTexture>();
     }
 
-    [NaughtyAttributes.Button]
-    protected override void ResetState()
+    protected override void SetupResources() 
     {
-        steps = 0; 
-
         moveKernel = computeShader.FindKernel("MoveAgentsKernel");
         trailKernel = computeShader.FindKernel("TrailsKernel");
         trailDecayKernel = computeShader.FindKernel("DecayKernel");
@@ -188,14 +183,15 @@ public class Physarium3DScript : ComputeShaderScript
         buffers.Add(agentBuffer);
         randStateBuffer = new ComputeBuffer(agentCount, sizeof(uint));
         buffers.Add(randStateBuffer);
+    }
 
+    protected override void ResetState()
+    {
         DispatchResetKernels();
     }
 
     protected override void Step()
     {
-        steps++;
-
         computeShader.SetFloat("time", Time.time + TIME_OFFSET);
         computeShader.SetInt("stepNumber", steps);
 

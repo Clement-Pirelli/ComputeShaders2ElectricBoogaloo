@@ -1,9 +1,11 @@
 ﻿#pragma kernel ResetAgentsKernel
 #pragma kernel MoveAgentsKernel
+#pragma kernel RenderKernel
 
 #include "Assets/Common/ShaderUtilities/random.hlsl"
 
 #define NUMTHREAD_AGENTS 32
+#define NUMTHREAD_TEXTURE 32
 
 struct Agent
 {
@@ -23,6 +25,16 @@ float constantAngle;
 float neighborsAngle;
 int agentsCount;
 int domainSize;
+
+int resolution;
+float agentRadius;
+float neighborMax;
+RWTexture2D<float4> renderTexture;
+
+float4 dim;
+float4 bright;
+
+float smoothing;
 
 [numthreads(NUMTHREAD_AGENTS, 1, 1)]
 void ResetAgentsKernel(uint3 id : SV_DispatchThreadID)
@@ -83,4 +95,44 @@ void MoveAgentsKernel(uint3 id : SV_DispatchThreadID)
 	}
 
 	nextAgents[id.x] = agent;
+}
+
+//from iq: https://www.iquilezles.org/www/articles/smin/smin.htm
+float smin(float a, float b, float k)
+{
+	float h = saturate(0.5 + 0.5 * (b - a) / k);
+	return lerp(b, a, h) - k * h * (1.0 - h);
+}
+
+[numthreads(NUMTHREAD_TEXTURE, NUMTHREAD_TEXTURE, 1)]
+void RenderKernel(uint3 id : SV_DispatchThreadID)
+{
+	const float2 position = id.xy / float(resolution) * float(domainSize);
+	float sdf = domainSize*100.0;
+	float neighbors = 0;
+	int count = 0;
+
+	for (int i = 0; i < agentsCount; i++)
+	{
+		const Agent agent = agents[i];
+		const float dist = distance(position, agent.position);
+		sdf = smin(sdf, dist, smoothing);
+		if (dist < agentRadius) 
+		{
+			count++;
+			neighbors += agent.neighbors;
+		}
+	}
+
+	if(sdf < agentRadius)
+	{
+		const float mediumNeighbors = count == 0 ? 0 : neighbors / float(count);
+		const float weight = mediumNeighbors / neighborMax;
+		const float3 color = lerp(dim, bright, weight).xyz;
+		const float brightness = (1.0 - sdf / (agentRadius + smoothing * agentRadius));
+		renderTexture[id.xy] = float4(color * brightness, 1.0);
+	} else 
+	{
+		renderTexture[id.xy] = float4(.01, .01, .0, 1.0);
+	}
 }

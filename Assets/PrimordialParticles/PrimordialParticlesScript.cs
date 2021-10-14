@@ -2,85 +2,104 @@
 using System.Collections.Generic;
 using UnityEngine;
 #pragma warning disable CS0649 //disable Serializefield private warnings
+#pragma warning disable CS0414 //disable Variable set but never used warnings due to ComputeVariable attribute
 
 public class PrimordialParticlesScript : ComputeShaderScript
 {
-    readonly ComputeBuffer[] particleBuffers = new ComputeBuffer[2];
-    ComputeKernel resetAgentsKernel = new ComputeKernel("ResetAgentsKernel");
-    ComputeKernel moveAgentsKernel = new ComputeKernel("MoveAgentsKernel");
+    [ComputeVariable(resetAgentsKernelName, UpdateFrequency.OnStart, "nextAgents")]
+    [ComputeVariable(moveAgentsKernelName, variableName: "agents")]
+    [ComputeVariable(renderKernelName, variableName: "agents")]
+    ComputeBuffer firstParticleBuffer;
+    
+    [ComputeVariable(moveAgentsKernelName, variableName: "nextAgents")]
+    ComputeBuffer secondParticleBuffer;
 
-    [SerializeField, Range(.0f, 6.28318f)]
+    const string resetAgentsKernelName = "ResetAgentsKernel";
+    const string moveAgentsKernelName = "MoveAgentsKernel";
+    const string renderKernelName = "RenderKernel";
+    int resetAgentsKernel;
+    int moveAgentsKernel;
+    int renderKernel;
+
+
+    [SerializeField, Range(.0f, 6.28318f), ComputeVariable]
     float constantAngle;
-    [SerializeField, Range(.0f, 6.28318f)]
+    [SerializeField, Range(.0f, 6.28318f), ComputeVariable]
     float neighborsAngle;
-    [SerializeField, Range(.01f, 50.0f)]
+    [SerializeField, Range(.01f, 50.0f), ComputeVariable(variableName: "neighborhoodRadius")]
     float radius;
 
-    [SerializeField]
+    [SerializeField, ComputeVariable]
     float agentSpeed;
 
-    [SerializeField]
+    [SerializeField, ComputeVariable(frequency: UpdateFrequency.OnStart | UpdateFrequency.OnStep)]
     int domainSize;
 
-    [SerializeField, Range(NUMTHREAD_AGENTS, 10000)]
+    [SerializeField, Range(NUMTHREAD_AGENTS, 10000), ComputeVariable(frequency:UpdateFrequency.OnStart)]
     int agentsCount;
 
-    [SerializeField]
-    ParticleRendering rendering;
+    [SerializeField, ComputeVariable]
+    float agentRadius = 1.0f;
+    [SerializeField, ComputeVariable]
+    float neighborMax = 10.0f;
+
+    [SerializeField, ComputeVariable]
+    float smoothing = .1f;
+
+    [SerializeField, ComputeVariable(variableName:"dim")]
+    Color dimColor;
+    [SerializeField, ComputeVariable(variableName:"bright")]
+    Color brightColor;
+
+    [SerializeField, ComputeVariable]
+    int resolution = 1024;
+    [ComputeVariable(renderKernelName)]
+    RenderTexture renderTexture;
 
     const int NUMTHREAD_AGENTS = 32;
-
+    const int NUMTHREAD_RESOLUTION = 32;
     public int toDispatchAgents { get { return agentsCount / NUMTHREAD_AGENTS; } }
+    public int toDispatchTexture { get { return resolution / NUMTHREAD_RESOLUTION; } }
 
-    [NaughtyAttributes.Button]
+    protected override void SetupResources()
+    {
+        const int agentStructSize = sizeof(float) * 3 + sizeof(int) * 1;
+        firstParticleBuffer = new ComputeBuffer(agentsCount, agentStructSize);
+        secondParticleBuffer = new ComputeBuffer(agentsCount, agentStructSize);
+        renderTexture = CSUtilities.CreateRenderTexture(resolution, FilterMode.Trilinear, RenderTextureFormat.ARGB32);
+
+        resetAgentsKernel = computeShader.FindKernel(resetAgentsKernelName);
+        moveAgentsKernel = computeShader.FindKernel(moveAgentsKernelName);
+        renderKernel = computeShader.FindKernel(renderKernelName);
+    }
+
     protected override void ResetState()
     {
-        for(int i = 0; i < 2; i++)
-        {
-            particleBuffers[i] = new ComputeBuffer(agentsCount, sizeof(float) * 3 + sizeof(int) * 1);
-        }
-        resetAgentsKernel.Find(computeShader);
-        moveAgentsKernel.Find(computeShader);
-
         computeShader.SetInt("randomSeed", Random.Range(0, 10000));
-        computeShader.SetBuffer(resetAgentsKernel.value, "nextAgents", particleBuffers[0]);
-        computeShader.SetInt("domainSize", domainSize);
-        computeShader.Dispatch(resetAgentsKernel.value, toDispatchAgents, 1, 1);
+        computeShader.Dispatch(resetAgentsKernel, toDispatchAgents, 1, 1);
     }
 
     protected override void Step()
     {
         {
-            computeShader.SetInt("domainSize", domainSize);
-            computeShader.SetInt("agentsCount", agentsCount);
-            computeShader.SetFloat("agentSpeed", agentSpeed);
-            computeShader.SetFloat("neighborhoodRadius", radius);
-            computeShader.SetFloat("neighborsAngle", neighborsAngle);
-            computeShader.SetFloat("constantAngle", constantAngle);
-            computeShader.SetBuffer(moveAgentsKernel.value, "agents", particleBuffers[0]);
-            computeShader.SetBuffer(moveAgentsKernel.value, "nextAgents", particleBuffers[1]);
-            computeShader.Dispatch(moveAgentsKernel.value, toDispatchAgents, 1, 1);
+            computeShader.Dispatch(moveAgentsKernel, toDispatchAgents, 1, 1);
         }
 
         SwapBuffers();
-    }
 
-    protected override void Render()
-    {
-        outMaterial.SetBuffer("agentsBuffer", particleBuffers[0]);
-        rendering.Render(outMaterial, domainSize, agentsCount);
+        computeShader.Dispatch(renderKernel, toDispatchTexture, toDispatchTexture, 1);
+
+        outMaterial.SetTexture("_MainTex", renderTexture);
     }
 
     void SwapBuffers() 
     {
-        (particleBuffers[0], particleBuffers[1]) = (particleBuffers[1], particleBuffers[0]);
+        (firstParticleBuffer, secondParticleBuffer) = (secondParticleBuffer, firstParticleBuffer);
     }
 
     protected override void ReleaseResources()
     {
-        foreach(var buffer in particleBuffers) 
-        {
-            buffer?.Release();
-        }
+        firstParticleBuffer?.Release();
+        secondParticleBuffer?.Release();
     }
 }
