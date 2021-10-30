@@ -118,6 +118,9 @@ public abstract class ComputeShaderScript : MonoBehaviour
             case ComputeBuffer cb:
                 computeShader.SetBuffer(kernel, name, cb);
                 break;
+            case AnimationCurve am:
+                computeShader.SetFloat(name, am.Evaluate(Time.time));
+                break;
             default:
                 Debug.LogError($"ComputeVariable of name {name} has an unsupported type! Type was {value.GetType()}");
                 break;

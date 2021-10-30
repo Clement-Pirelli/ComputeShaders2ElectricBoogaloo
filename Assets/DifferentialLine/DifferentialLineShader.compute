@@ -4,15 +4,16 @@
 #pragma kernel resetTextureKernel
 #pragma enable_d3d11_debug_symbols
 
-//todo: instead of an append buffer, have a separate buffer for the count since both buffers are supposed to have the same count
-
+//---- CONSTANTS
 
 #define NUMTHREADS_POINTS 32
 #define NUMTHREADS_RESOLUTION 32
 
 #define EPSILON .000001
+#define DIMENSIONS 100.0
+#define PI 3.14
 
-RWTexture2D<float4> outTexture;
+//----- NODES
 
 struct Node
 {
@@ -20,10 +21,29 @@ struct Node
 	uint previous;
 	uint next;
 };
-
-AppendStructuredBuffer<Node> appendBuffer;
 RWStructuredBuffer<Node> writeBuffer;
 StructuredBuffer<Node> readBuffer;
+
+//------ COUNT
+
+struct Count
+{
+	int value;
+};
+RWStructuredBuffer<Count> countBuffer;
+int getCount() 
+{
+	return countBuffer[0].value;
+}
+
+int getAndIncrementCount()
+{
+	uint result;
+	InterlockedAdd(countBuffer[0].value, 1, result);
+	return result;
+}
+
+//------ VARIABLES
 
 int resolution;
 int maxCount;
@@ -36,18 +56,23 @@ float repulsionRadius;
 float minNeighborDist;
 
 float movementSpeed;
+float deltaTime;
 
-float2 stickToNeighbor(Node currentNode, Node neighborNode) 
+
+RWTexture2D<float4> outTexture;
+
+float2 constrainByDistance(float2 toConstrain, float2 constraint, float distance) 
 {
-	const float2 delta = neighborNode.position - currentNode.position;
+	const float2 delta = toConstrain - constraint;
 	const float dist = length(delta);
-	if(dist > minNeighborDist)
+	if (dist > distance) 
 	{
-		return -(delta / dist);
+		const float2 direction = delta / dist;
+		return constraint + direction * distance;
 	}
-	else
+	else 
 	{
-		return float2(.0, .0);
+		return toConstrain;
 	}
 }
 
@@ -56,24 +81,7 @@ void updateKernel(uint3 id : SV_DispatchThreadID)
 {
 	Node currentNode = readBuffer[id.x];
 
-
-	//neighbor nodes, want to get closer (within a threshold)
-	const Node previousNode = readBuffer[currentNode.previous];
-	const Node nextNode = readBuffer[currentNode.next];
-
-	float2 neighborMovement = stickToNeighbor(currentNode, previousNode) + stickToNeighbor(currentNode, nextNode);
-	const float neighborMovementLength = length(neighborMovement);
-	if (neighborMovementLength > EPSILON) 
-	{
-		neighborMovement = neighborMovement / neighborMovementLength;
-	}
-
-	//non-neighbor nodes, want to keep their distance
-	uint nodeCount;
-	uint _;
-	readBuffer.GetDimensions(nodeCount, _);
-
-	int neighborsCount = 0;
+	const uint nodeCount = getCount();
 	float2 repulsionMovement = float2(.0, .0);
 	for (uint i = 0; i < nodeCount; i++)
 	{
@@ -93,11 +101,16 @@ void updateKernel(uint3 id : SV_DispatchThreadID)
 		}
 	}
 	
-	const float2 movement = neighborMovement + repulsionMovement;
-	const float movementLength = length(movement);
+	const float movementLength = length(repulsionMovement);
 	if (movementLength > EPSILON)
 	{
-		currentNode.position += movement / movementLength * movementSpeed;
+		currentNode.position += repulsionMovement / movementLength * movementSpeed * deltaTime;
+
+		//neighbor nodes, want to get closer (within a threshold)
+		const Node previousNode = readBuffer[currentNode.previous];
+		const Node nextNode = readBuffer[currentNode.next]; 
+		currentNode.position = constrainByDistance(currentNode.position, nextNode.position, minNeighborDist);
+		currentNode.position = constrainByDistance(currentNode.position, previousNode.position, minNeighborDist);
 		writeBuffer[id.x] = currentNode;
 	}
 }
@@ -105,8 +118,8 @@ void updateKernel(uint3 id : SV_DispatchThreadID)
 [numthreads(NUMTHREADS_POINTS, 1, 1)]
 void resetKernel(uint3 id : SV_DispatchThreadID)
 {
-	const float angle = (float)id.x / (float)initialCount * 2.0 * 3.14;
-	const float2 position = 100.0 * (float2(.5,.5) + initialRadius * float2(cos(angle), sin(angle)));
+	const float angle = (float)id.x / (float)initialCount * 2.0 * PI;
+	const float2 position = DIMENSIONS * (float2(.5,.5) + initialRadius * float2(cos(angle), sin(angle)));
 
 	int previous = ((int)id.x) - 1;
 	if (previous < 0) previous = initialCount - 1;
@@ -118,52 +131,26 @@ void resetKernel(uint3 id : SV_DispatchThreadID)
 	node.position = position;
 	node.previous = previous;
 	node.next = next;
-	appendBuffer.Append(node);
+	writeBuffer[id.x] = node;
 }
 
 
 int2 getCoords(float2 position) 
 {
-	return position * (float)resolution / 100.0;
+	return position * (float)resolution / DIMENSIONS;
 }
 
 bool withinScreen(int2 coords)
 {
-	return coords.x > 0 && coords.y > 0 && coords.x < resolution &&coords.y < resolution;
+	return coords.x > 0 && coords.y > 0 && coords.x < resolution && coords.y < resolution;
 }
 
 [numthreads(NUMTHREADS_POINTS, 1, 1)]
 void renderKernel(uint3 id : SV_DispatchThreadID)
 {
 	const Node node = readBuffer[id.x];
-	const Node nextNode = readBuffer[node.next];
-
-	int2 nodeCoords = getCoords(node.position);
-	int2 nextNodeCoords = getCoords(nextNode.position);
-	if (nodeCoords.x > nextNodeCoords.x) 
-	{
-		const int2 temp = nodeCoords;
-		nodeCoords = nextNodeCoords;
-		nextNodeCoords = temp;
-	}
-
-	const int2 difference = nextNodeCoords - nodeCoords;
-	int D = 2 * difference.y - difference.x;
-	for (int2 coords = nodeCoords; coords.x <= nextNodeCoords.x; coords.x++)
-	{
-		if (!withinScreen(coords))
-		{
-			break;
-		}
-		outTexture[coords] = float4(1.0, 1.0, 1.0, 1.0);
-
-		if(D > 0)
-		{
-			coords.y++;
-			D -= 2 * difference.x;
-		}
-		D += 2 * difference.y;
-	}
+	const int2 nodeCoords = getCoords(node.position);
+	outTexture[nodeCoords] = float4(1.0, 1.0, 1.0, 1.0);
 }
 
 [numthreads(NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION, 1)]

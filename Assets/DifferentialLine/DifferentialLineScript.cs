@@ -17,21 +17,14 @@ public class DifferentialLineScript : ComputeShaderScript
     const int NUMTHREADS_POINTS = 32;
     const int NUMTHREADS_RESOLUTION = 32;
 
+    [ComputeVariable(nameof(updateKernel), frequency: UpdateFrequency.OnStart),
+     ComputeVariable(nameof(resetKernel), frequency: UpdateFrequency.OnStart)]
     ComputeBuffer countBuffer;
-    int lastStepQueried = -1;
-    int cachedCounter = 0;
-    int ToDispatchPoints { get 
+    int ToDispatchPoints { get
         {
-            //cache the data, it will most likely change every frame so ask again then
-            if(lastStepQueried != steps)
-            {
-                lastStepQueried = steps;
-                ComputeBuffer.CopyCount(readBuffer, countBuffer, 0);
-                int[] counter = new int[] { 0 };
-                countBuffer.GetData(counter);
-                cachedCounter = counter[0];
-            }
-            return cachedCounter / NUMTHREADS_POINTS + 1;
+            int[] counter = new int[] { 0 };
+            countBuffer.GetData(counter);
+            return counter[0] / NUMTHREADS_POINTS + 1;
         } 
     }
 
@@ -52,8 +45,11 @@ public class DifferentialLineScript : ComputeShaderScript
     [SerializeField, ComputeVariable]
     float movementSpeed;
 
-    [ComputeVariable(nameof(updateKernel), variableName: "writeBuffer"), 
-     ComputeVariable(nameof(resetKernel), variableName: "appendBuffer")]
+    [ComputeVariable]
+    float deltaTime;
+
+    [ComputeVariable(nameof(updateKernel)), 
+     ComputeVariable(nameof(resetKernel))]
     ComputeBuffer writeBuffer;
     
     [ComputeVariable(nameof(updateKernel)), 
@@ -81,6 +77,8 @@ public class DifferentialLineScript : ComputeShaderScript
         computeShader.SetBuffer(GetKernel(nameof(resetKernel)), nameof(readBuffer), readBuffer);
         computeShader.SetBuffer(GetKernel(nameof(resetKernel)), nameof(writeBuffer), writeBuffer);
         computeShader.Dispatch(resetKernel, initialCount / NUMTHREADS_POINTS, 1, 1);
+
+        countBuffer.SetData(new int[] { initialCount });
     }
 
     protected override void SetupResources()
@@ -88,23 +86,22 @@ public class DifferentialLineScript : ComputeShaderScript
         countBuffer = new ComputeBuffer(1, sizeof(int), ComputeBufferType.IndirectArguments);
 
         const int elementSize = sizeof(float) * 2 + sizeof(uint) * 2;
-        writeBuffer = new ComputeBuffer(maxCount, elementSize, ComputeBufferType.Append);
-        writeBuffer.SetCounterValue(0);
-        readBuffer = new ComputeBuffer(maxCount, elementSize, ComputeBufferType.Append);
-        writeBuffer.SetCounterValue(0);
+        writeBuffer = new ComputeBuffer(maxCount, elementSize);
+        readBuffer = new ComputeBuffer(maxCount, elementSize);
         outTexture = CSUtilities.CreateRenderTexture(resolution, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
     }
 
     protected override void Step()
     {
-        //computeShader.Dispatch(updateKernel, ToDispatchPoints, 1, 1);
+        deltaTime = Time.deltaTime;
         if (clearTexture)
         {
             computeShader.Dispatch(resetTextureKernel, ToDispatchResolution, ToDispatchResolution, 1);
         }
+        computeShader.Dispatch(updateKernel, ToDispatchPoints, 1, 1);
         computeShader.Dispatch(renderKernel, ToDispatchPoints, 1, 1);
         outMaterial.SetTexture("_MainTex", outTexture);
-        //SwapBuffers();
+        SwapBuffers();
     }
 
     void SwapBuffers() 
