@@ -229,7 +229,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!64 &1701292956
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -320,7 +320,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1885568644
 Transform:
   m_ObjectHideFlags: 0
@@ -349,15 +349,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   computeShader: {fileID: 7200000, guid: 3bbd9f6eaaef7ed46b5c9804643a3d93, type: 3}
   outMaterial: {fileID: 2100000, guid: d2f2b1fef634960408f48ce8fc62cd56, type: 2}
-  simulationSpeed: 1
-  maxCount: 8192
-  initialRadius: 0.1
-  initialCount: 1024
-  repulsionRadius: 0.04
-  minNeighborDist: 0.001
-  movementSpeed: 0.001
-  resolution: 1024
+  simulationSpeed: 2
+  maxCount: 16384
+  initialRadius: 0.2
+  initialCount: 2048
+  repulsionRadius: 0.5
+  minNeighborDist: 0.1
+  movementSpeed: 0.32
+  newNodesPerSecond: 0
+  resolution: 2048
   clearTexture: 1
+  fadeCoefficient: 0
 --- !u!1 &2006668162
 GameObject:
   m_ObjectHideFlags: 0
@@ -499,7 +501,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &2080644532
 MonoBehaviour:
   m_ObjectHideFlags: 0

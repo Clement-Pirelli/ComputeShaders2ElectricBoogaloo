@@ -2,7 +2,12 @@
 #pragma kernel resetKernel
 #pragma kernel renderKernel
 #pragma kernel resetTextureKernel
+#pragma kernel appendKernel
 #pragma enable_d3d11_debug_symbols
+
+//---- INCLUDES
+
+#include "Assets/Common/ShaderUtilities/random.hlsl"
 
 //---- CONSTANTS
 
@@ -22,6 +27,7 @@ struct Node
 	uint next;
 };
 RWStructuredBuffer<Node> writeBuffer;
+RWStructuredBuffer<Node> writeBuffer2; //used for appendKernel - we must write to both at the same time
 StructuredBuffer<Node> readBuffer;
 
 //------ COUNT
@@ -38,7 +44,7 @@ int getCount()
 
 int getAndIncrementCount()
 {
-	uint result;
+	int result;
 	InterlockedAdd(countBuffer[0].value, 1, result);
 	return result;
 }
@@ -46,6 +52,7 @@ int getAndIncrementCount()
 //------ VARIABLES
 
 int resolution;
+float aspectRatio;
 int maxCount;
 float initialRadius;
 int initialCount;
@@ -57,9 +64,13 @@ float minNeighborDist;
 
 float movementSpeed;
 float deltaTime;
-
+int step;
 
 RWTexture2D<float4> outTexture;
+
+RWStructuredBuffer<RandState> randStates;
+
+float fadeCoefficient;
 
 float2 constrainByDistance(float2 toConstrain, float2 constraint, float distance) 
 {
@@ -119,7 +130,7 @@ void updateKernel(uint3 id : SV_DispatchThreadID)
 void resetKernel(uint3 id : SV_DispatchThreadID)
 {
 	const float angle = (float)id.x / (float)initialCount * 2.0 * PI;
-	const float2 position = DIMENSIONS * (float2(.5,.5) + initialRadius * float2(cos(angle), sin(angle)));
+	const float2 position = DIMENSIONS * (float2(.5*aspectRatio, .5) + initialRadius * float2(cos(angle), sin(angle)));
 
 	int previous = ((int)id.x) - 1;
 	if (previous < 0) previous = initialCount - 1;
@@ -134,27 +145,97 @@ void resetKernel(uint3 id : SV_DispatchThreadID)
 	writeBuffer[id.x] = node;
 }
 
+// ----- Texture Kernels
 
 int2 getCoords(float2 position) 
 {
-	return position * (float)resolution / DIMENSIONS;
+	return position * float2(resolution, resolution) / DIMENSIONS;
 }
 
 bool withinScreen(int2 coords)
 {
-	return coords.x > 0 && coords.y > 0 && coords.x < resolution && coords.y < resolution;
+	return coords.x > 0 && coords.y > 0 && coords.x < resolution*aspectRatio && coords.y < resolution;
 }
+
+void drawCircle(float2 centerPosition)
+{
+	const float color = 1.4;
+	const int circleRadius = 3;
+
+	const int2 center = getCoords(centerPosition);
+	int2 start = center - circleRadius;
+	int2 end = center + circleRadius;
+
+	for(int y = start.y; y <= end.y; y++)
+	for(int x = start.x; x <= end.x; x++)
+	{
+		const int2 currentCoord = int2(x, y);
+		if (distance(currentCoord, center) <= circleRadius)
+		{
+			outTexture[currentCoord] += float4(color, color, color, 1.0);
+		}
+	}
+}
+
 
 [numthreads(NUMTHREADS_POINTS, 1, 1)]
 void renderKernel(uint3 id : SV_DispatchThreadID)
 {
+	if (id.x >= getCount()) 
+	{
+		return;
+	}
+
 	const Node node = readBuffer[id.x];
-	const int2 nodeCoords = getCoords(node.position);
-	outTexture[nodeCoords] = float4(1.0, 1.0, 1.0, 1.0);
+
+	drawCircle(node.position);
 }
+
 
 [numthreads(NUMTHREADS_RESOLUTION, NUMTHREADS_RESOLUTION, 1)]
 void resetTextureKernel(uint3 id : SV_DispatchThreadID) 
 {
-	outTexture[id.xy] = float4(.0, .0, .0, 1.0);
+	outTexture[id.xy] = outTexture[id.xy] * fadeCoefficient;
+}
+
+// ----- Append Kernel
+
+int getRandomIndex(uint id, int range) 
+{
+	uint randSeed = wangHash(id + step);
+	const float random01 = rand(randSeed);
+	return random01 * (range - .5);
+}
+
+
+[numthreads(1, 1, 1)]
+void appendKernel(uint3 id : SV_DispatchThreadID)
+{
+	const int newIndex = getAndIncrementCount();
+	if (newIndex >= maxCount)
+	{
+		return; 
+	}
+
+	const int chosenIndex = getRandomIndex(id.x, newIndex);
+	const int previousIndex = (chosenIndex == 0 ? newIndex : chosenIndex) - 1;
+
+	Node previousNode = writeBuffer[previousIndex];
+	Node nextNode = writeBuffer[previousNode.next];
+
+	nextNode.previous = newIndex;
+	previousNode.next = newIndex;
+
+	Node appendedNode;
+	appendedNode.position = lerp(previousNode.position, nextNode.position, .5);
+	appendedNode.previous = previousIndex;
+	appendedNode.next = chosenIndex;
+
+	writeBuffer[newIndex] = appendedNode;
+	writeBuffer[chosenIndex] = nextNode;
+	writeBuffer[previousIndex] = previousNode;
+
+	writeBuffer2[newIndex] = appendedNode;
+	writeBuffer2[chosenIndex] = nextNode;
+	writeBuffer2[previousIndex] = previousNode;
 }

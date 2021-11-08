@@ -13,7 +13,7 @@ public abstract class ComputeShaderScript : MonoBehaviour
     protected Material outMaterial;
 
     [SerializeField, Range(.0f, 2.0f)]
-    float simulationSpeed = 1.0f;
+    protected float simulationSpeed = 1.0f;
     protected int steps = 0;
 
     private Dictionary<string, int> namesToKernels = new Dictionary<string, int>();
