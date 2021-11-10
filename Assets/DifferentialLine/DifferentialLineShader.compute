@@ -23,54 +23,38 @@
 struct Node
 {
 	float2 position;
-	uint previous;
-	uint next;
+	int previous;
+	int next;
 };
 RWStructuredBuffer<Node> writeBuffer;
 RWStructuredBuffer<Node> writeBuffer2; //used for appendKernel - we must write to both at the same time
 StructuredBuffer<Node> readBuffer;
 
-//------ COUNT
-
-struct Count
-{
-	int value;
-};
-RWStructuredBuffer<Count> countBuffer;
-int getCount() 
-{
-	return countBuffer[0].value;
-}
-
-int getAndIncrementCount()
-{
-	int result;
-	InterlockedAdd(countBuffer[0].value, 1, result);
-	return result;
-}
-
 //------ VARIABLES
 
-int resolution;
-float aspectRatio;
-int maxCount;
-float initialRadius;
-int initialCount;
+const int resolution;
+const float aspectRatio;
+const int maxCount;
+const float initialRadius;
+const int initialCount;
 
-float maxConnectionLength;
+const float maxConnectionLength;
 
-float repulsionRadius;
-float minNeighborDist;
+const float repulsionRadius;
+const float minNeighborDist;
 
-float movementSpeed;
-float deltaTime;
-int step;
+const float movementSpeed;
+const float deltaTime;
+const int step;
+
+const int nodeCount;
 
 RWTexture2D<float4> outTexture;
 
 RWStructuredBuffer<RandState> randStates;
 
-float fadeCoefficient;
+const float fadeCoefficient;
+const int nodeSize;
 
 float2 constrainByDistance(float2 toConstrain, float2 constraint, float distance) 
 {
@@ -92,11 +76,10 @@ void updateKernel(uint3 id : SV_DispatchThreadID)
 {
 	Node currentNode = readBuffer[id.x];
 
-	const uint nodeCount = getCount();
 	float2 repulsionMovement = float2(.0, .0);
-	for (uint i = 0; i < nodeCount; i++)
+	for (int i = 0; i < nodeCount; i++)
 	{
-		if (i == id.x
+		if (i == (int)id.x
 			|| i == currentNode.previous
 			|| i == currentNode.next)
 		{
@@ -135,8 +118,8 @@ void resetKernel(uint3 id : SV_DispatchThreadID)
 	int previous = ((int)id.x) - 1;
 	if (previous < 0) previous = initialCount - 1;
 
-	uint next = id.x + 1;
-	if (next >= (uint)initialCount) next = 0;
+	int next = id.x + 1;
+	if (next >= initialCount) next = 0;
 
 	Node node;
 	node.position = position;
@@ -159,19 +142,18 @@ bool withinScreen(int2 coords)
 
 void drawCircle(float2 centerPosition)
 {
-	const float color = 1.4;
-	const int circleRadius = 3;
-
 	const int2 center = getCoords(centerPosition);
-	int2 start = center - circleRadius;
-	int2 end = center + circleRadius;
+	int2 start = center - nodeSize;
+	int2 end = center + nodeSize;
 
 	for(int y = start.y; y <= end.y; y++)
 	for(int x = start.x; x <= end.x; x++)
 	{
 		const int2 currentCoord = int2(x, y);
-		if (distance(currentCoord, center) <= circleRadius)
+		const int dist = distance(currentCoord, center);
+		if (dist <= nodeSize)
 		{
+			const float color = .5 + .5 * smoothstep(.0, 1.0, 1.0 - (float)dist / (float)nodeSize);
 			outTexture[currentCoord] += float4(color, color, color, 1.0);
 		}
 	}
@@ -181,7 +163,7 @@ void drawCircle(float2 centerPosition)
 [numthreads(NUMTHREADS_POINTS, 1, 1)]
 void renderKernel(uint3 id : SV_DispatchThreadID)
 {
-	if (id.x >= getCount()) 
+	if ((int)id.x >= nodeCount)
 	{
 		return;
 	}
@@ -207,35 +189,35 @@ int getRandomIndex(uint id, int range)
 	return random01 * (range - .5);
 }
 
+const int nodesToAppend;
 
 [numthreads(1, 1, 1)]
 void appendKernel(uint3 id : SV_DispatchThreadID)
 {
-	const int newIndex = getAndIncrementCount();
-	if (newIndex >= maxCount)
+	for (int i = 0; i < nodesToAppend; i++) 
 	{
-		return; 
+		const int newIndex = nodeCount+i;
+
+		const int chosenIndex = getRandomIndex(id.x, newIndex);
+
+		Node chosenNode = writeBuffer[chosenIndex];
+		const int nextIndex = chosenNode.next;
+		Node nextNode = writeBuffer[nextIndex];
+
+		nextNode.previous = newIndex;
+		chosenNode.next = newIndex;
+
+		Node appendedNode;
+		appendedNode.position = lerp(chosenNode.position, nextNode.position, .5);
+		appendedNode.previous = chosenIndex;
+		appendedNode.next = nextIndex;
+
+		writeBuffer[newIndex] = appendedNode;
+		writeBuffer[nextIndex] = nextNode;
+		writeBuffer[chosenIndex] = chosenNode;
+
+		writeBuffer2[newIndex] = appendedNode;
+		writeBuffer2[nextIndex] = nextNode;
+		writeBuffer2[chosenIndex] = chosenNode;
 	}
-
-	const int chosenIndex = getRandomIndex(id.x, newIndex);
-	const int previousIndex = (chosenIndex == 0 ? newIndex : chosenIndex) - 1;
-
-	Node previousNode = writeBuffer[previousIndex];
-	Node nextNode = writeBuffer[previousNode.next];
-
-	nextNode.previous = newIndex;
-	previousNode.next = newIndex;
-
-	Node appendedNode;
-	appendedNode.position = lerp(previousNode.position, nextNode.position, .5);
-	appendedNode.previous = previousIndex;
-	appendedNode.next = chosenIndex;
-
-	writeBuffer[newIndex] = appendedNode;
-	writeBuffer[chosenIndex] = nextNode;
-	writeBuffer[previousIndex] = previousNode;
-
-	writeBuffer2[newIndex] = appendedNode;
-	writeBuffer2[chosenIndex] = nextNode;
-	writeBuffer2[previousIndex] = previousNode;
 }

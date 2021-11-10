@@ -26,7 +26,6 @@ public abstract class ComputeShaderScript : MonoBehaviour
     void Start()
     {
         UnityEngine.Random.InitState(DateTime.Now.Second);
-        GetKernels();
         Restart();
     }
 
@@ -48,6 +47,7 @@ public abstract class ComputeShaderScript : MonoBehaviour
     [NaughtyAttributes.Button]
     public void Restart()
     {
+        GetKernels();
         SetupResources();
         UpdateComputeVariables(UpdateFrequency.OnStart);
         ResetState();
@@ -122,13 +122,15 @@ public abstract class ComputeShaderScript : MonoBehaviour
                 computeShader.SetFloat(name, am.Evaluate(Time.time));
                 break;
             default:
-                Debug.LogError($"ComputeVariable of name {name} has an unsupported type! Type was {value.GetType()}");
+                Debug.LogError($"ComputeVariable of name {name} has an unsupported type! Type was {value?.GetType()}");
                 break;
         }
     }
 
     private void GetKernels()
     {
+        namesToKernels.Clear();
+
         foreach (var field in GetType().GetFields(bindingFlags))
         {
             var attribute = field.GetCustomAttribute<ComputeKernelAttribute>();
@@ -138,7 +140,8 @@ public abstract class ComputeShaderScript : MonoBehaviour
                 var value = field.GetValue(this);
                 if (value.GetType() != typeof(int))
                 {
-                    throw new Exception($"ComputeKernel attribute can only be used on ints! {field} is not of int type!");
+                    Debug.LogError($"ComputeKernel attribute can only be used on ints! {field} is not of int type!");
+                    continue;
                 }
 
                 int kernel = computeShader.FindKernel(name);

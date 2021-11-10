@@ -19,20 +19,8 @@ public class DifferentialLineScript : ComputeShaderScript
     const int NUMTHREADS_POINTS = 32;
     const int NUMTHREADS_RESOLUTION = 32;
 
-    [ComputeVariable(nameof(updateKernel), frequency: UpdateFrequency.OnStart),
-     ComputeVariable(nameof(appendKernel), frequency: UpdateFrequency.OnStart),
-     ComputeVariable(nameof(renderKernel), frequency: UpdateFrequency.OnStart),
-     ComputeVariable(nameof(resetKernel), frequency: UpdateFrequency.OnStart)]
-    ComputeBuffer countBuffer;
-    int ToDispatchPoints { get
-        {
-            int[] counter = new int[] { 0 };
-            countBuffer.GetData(counter);
-            return Mathf.Max(counter[0], maxCount) / NUMTHREADS_POINTS + 1;
-        }
-    }
-
     int ToDispatchResolution { get { return resolution / NUMTHREADS_RESOLUTION; } }
+    int ToDispatchPoints { get { return nodeCount / NUMTHREADS_POINTS + 1; } }
 
     [SerializeField, ComputeVariable(frequency: UpdateFrequency.OnStart)]
     int maxCount;
@@ -54,7 +42,7 @@ public class DifferentialLineScript : ComputeShaderScript
 
     [SerializeField]
     float newNodesPerSecond;
-    float nodeCounter;
+    float newNodesCounter;
 
     [ComputeVariable(nameof(updateKernel)),
      ComputeVariable(nameof(resetKernel)),
@@ -75,6 +63,9 @@ public class DifferentialLineScript : ComputeShaderScript
     [SerializeField, ComputeVariable(frequency: UpdateFrequency.OnStart)]
     int resolution;
 
+    [SerializeField, Range(1, 10), ComputeVariable]
+    int nodeSize = 3;
+
     [SerializeField]
     bool clearTexture;
     [SerializeField, ComputeVariable]
@@ -82,24 +73,25 @@ public class DifferentialLineScript : ComputeShaderScript
 
     [ComputeVariable(frequency: UpdateFrequency.OnStart)]
     readonly float aspectRatio = 16f / 9f;
+    
+    [ComputeVariable]
+    int nodeCount = 0;
 
     protected override void ResetState()
     {
-        computeShader.Dispatch(resetKernel, initialCount / NUMTHREADS_POINTS, 1, 1);
+        nodeCount = initialCount;
+
+        computeShader.Dispatch(resetKernel, ToDispatchPoints, 1, 1);
 
         SwapBuffers();
         
         computeShader.SetBuffer(GetKernel(nameof(resetKernel)), nameof(readBuffer), readBuffer);
         computeShader.SetBuffer(GetKernel(nameof(resetKernel)), nameof(writeBuffer), writeBuffer);
-        computeShader.Dispatch(resetKernel, initialCount / NUMTHREADS_POINTS, 1, 1);
-
-        countBuffer.SetData(new int[] { initialCount });
+        computeShader.Dispatch(resetKernel, ToDispatchPoints, 1, 1);
     }
 
     protected override void SetupResources()
     {
-        countBuffer = new ComputeBuffer(1, sizeof(int), ComputeBufferType.IndirectArguments);
-
         const int elementSize = sizeof(float) * 2 + sizeof(uint) * 2;
         writeBuffer = new ComputeBuffer(maxCount, elementSize);
         readBuffer = new ComputeBuffer(maxCount, elementSize);
@@ -109,7 +101,7 @@ public class DifferentialLineScript : ComputeShaderScript
     protected override void Step()
     {
         deltaTime = Time.deltaTime * simulationSpeed;
-        nodeCounter += deltaTime;
+        newNodesCounter += deltaTime;
         if (clearTexture)
         {
             computeShader.Dispatch(resetTextureKernel, (int)(ToDispatchResolution*aspectRatio), ToDispatchResolution, 1);
@@ -120,10 +112,17 @@ public class DifferentialLineScript : ComputeShaderScript
         computeShader.Dispatch(renderKernel, toDispatchPoints, 1, 1);
         outMaterial.SetTexture("_MainTex", outTexture);
 
-        if (nodeCounter >= 1.0f) 
+        if (newNodesCounter >= 1.0f && nodeCount != maxCount)
         {
-            computeShader.Dispatch(appendKernel, (int)nodeCounter, 1, 1);
-            nodeCounter -= (int)nodeCounter;
+            int flooredCounter = (int)newNodesCounter;
+            int nodesToAdd = Mathf.Min(flooredCounter, maxCount - nodeCount);
+            if (nodesToAdd > 0)
+            {
+                computeShader.SetInt("nodesToAppend", nodesToAdd);
+                computeShader.Dispatch(appendKernel, 1, 1, 1);
+                nodeCount += nodesToAdd;
+            }
+            newNodesCounter -= flooredCounter;
         }
 
         SwapBuffers();
@@ -138,6 +137,5 @@ public class DifferentialLineScript : ComputeShaderScript
     {
         readBuffer?.Dispose();
         writeBuffer?.Dispose();
-        countBuffer?.Dispose();
     }
 }
