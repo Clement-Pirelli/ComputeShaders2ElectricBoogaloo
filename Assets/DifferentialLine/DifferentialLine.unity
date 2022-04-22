@@ -299,7 +299,7 @@ Transform:
   m_GameObject: {fileID: 1701292955}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 1.6, y: 0.9, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 2
@@ -314,6 +314,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1885568644}
   - component: {fileID: 1885568645}
+  - component: {fileID: 1885568646}
   m_Layer: 0
   m_Name: GameObject
   m_TagString: Untagged
@@ -350,16 +351,34 @@ MonoBehaviour:
   computeShader: {fileID: 7200000, guid: 3bbd9f6eaaef7ed46b5c9804643a3d93, type: 3}
   outMaterial: {fileID: 2100000, guid: d2f2b1fef634960408f48ce8fc62cd56, type: 2}
   simulationSpeed: 2
-  maxCount: 16384
+  startShape: 1
   initialRadius: 0.2
-  initialCount: 2048
-  repulsionRadius: 0.5
-  minNeighborDist: 0.1
-  movementSpeed: 0.32
-  newNodesPerSecond: 0
-  resolution: 2048
+  lineStartAndEnd: {x: 0.3, y: 0.55, z: 0.7, w: 0.45}
+  pinEnds: 0
+  initialCount: 256
+  repulsionRadius: 2.07
+  minNeighborDist: 0.3
+  movementSpeed: 3
+  maxCount: 16384
+  newNodesPerSecond: 100
   clearTexture: 1
   fadeCoefficient: 0
+  pointSize: 10
+  pointColor: {r: 1, g: 1, b: 1, a: 0}
+  resolution: 2040
+--- !u!114 &1885568646
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1885568643}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 322efb0250b468e45abf0ed797791686, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  snapshotTime: 4
 --- !u!1 &2006668162
 GameObject:
   m_ObjectHideFlags: 0
@@ -396,7 +415,7 @@ Camera:
   m_GameObject: {fileID: 2006668162}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 1
+  m_ClearFlags: 2
   m_BackGroundColor: {r: 0, g: 0, b: 0, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
@@ -413,7 +432,7 @@ Camera:
   near clip plane: 0.3
   far clip plane: 1000
   field of view: 60
-  orthographic: 0
+  orthographic: 1
   orthographic size: 5
   m_Depth: -1
   m_CullingMask:

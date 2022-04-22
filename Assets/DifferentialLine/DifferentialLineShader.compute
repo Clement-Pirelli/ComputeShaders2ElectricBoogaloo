@@ -18,6 +18,9 @@
 #define DIMENSIONS 100.0
 #define PI 3.14
 
+#define START_LINE 0
+#define START_CIRCLE 1
+
 //----- NODES
 
 struct Node
@@ -35,6 +38,10 @@ StructuredBuffer<Node> readBuffer;
 const int resolution;
 const float aspectRatio;
 const int maxCount;
+
+int startShape;
+
+const float4 lineStartAndEnd;
 const float initialRadius;
 const int initialCount;
 
@@ -54,7 +61,16 @@ RWTexture2D<float4> outTexture;
 RWStructuredBuffer<RandState> randStates;
 
 const float fadeCoefficient;
-const int nodeSize;
+const int pointSize;
+
+const float4 pointColor;
+
+const bool pinEnds;
+
+bool invalidIndex(int index)
+{
+	return index < 0;
+}
 
 float2 constrainByDistance(float2 toConstrain, float2 constraint, float distance) 
 {
@@ -101,25 +117,67 @@ void updateKernel(uint3 id : SV_DispatchThreadID)
 		currentNode.position += repulsionMovement / movementLength * movementSpeed * deltaTime;
 
 		//neighbor nodes, want to get closer (within a threshold)
-		const Node previousNode = readBuffer[currentNode.previous];
-		const Node nextNode = readBuffer[currentNode.next]; 
-		currentNode.position = constrainByDistance(currentNode.position, nextNode.position, minNeighborDist);
-		currentNode.position = constrainByDistance(currentNode.position, previousNode.position, minNeighborDist);
+		if(!invalidIndex(currentNode.previous))
+		{
+			const Node previousNode = readBuffer[currentNode.previous];
+			currentNode.position = constrainByDistance(currentNode.position, previousNode.position, minNeighborDist);
+		}
+		else if (pinEnds) 
+		{
+			return;
+		}
+
+		if(!invalidIndex(currentNode.next))
+		{
+			const Node nextNode = readBuffer[currentNode.next]; 
+			currentNode.position = constrainByDistance(currentNode.position, nextNode.position, minNeighborDist);
+		}
+		else if (pinEnds)
+		{
+			return;
+		}
+
 		writeBuffer[id.x] = currentNode;
 	}
+}
+
+float2 circleFromID(uint id)
+{
+	const float angle = (float)id.x / (float)initialCount * 2.0 * PI;
+	return DIMENSIONS * (float2(.5 * aspectRatio, .5) + initialRadius * float2(cos(angle), sin(angle)));
+}
+
+float2 lineFromID(uint id)
+{
+	const float t = (float)(id) / (float)initialCount;
+	const float2 midpoint = lerp(lineStartAndEnd.xy, lineStartAndEnd.zw, t);
+	return DIMENSIONS * float2(midpoint.x * aspectRatio, midpoint.y);
+}
+
+float2 startPosition(uint id)
+{
+	switch(startShape)
+	{
+	case START_LINE:
+		return lineFromID(id);
+	case START_CIRCLE:
+		return circleFromID(id);
+	}
+	return (float2).0;
 }
 
 [numthreads(NUMTHREADS_POINTS, 1, 1)]
 void resetKernel(uint3 id : SV_DispatchThreadID)
 {
-	const float angle = (float)id.x / (float)initialCount * 2.0 * PI;
-	const float2 position = DIMENSIONS * (float2(.5*aspectRatio, .5) + initialRadius * float2(cos(angle), sin(angle)));
+	const float2 position = startPosition(id.x);
+
+	const bool wrap = startShape != START_LINE;
 
 	int previous = ((int)id.x) - 1;
-	if (previous < 0) previous = initialCount - 1;
-
 	int next = id.x + 1;
-	if (next >= initialCount) next = 0;
+
+	if (previous < 0) previous = wrap ? initialCount - 1 : -1;
+	if (next >= initialCount) next = wrap ? 0 : -1;
 
 	Node node;
 	node.position = position;
@@ -132,7 +190,12 @@ void resetKernel(uint3 id : SV_DispatchThreadID)
 
 int2 getCoords(float2 position) 
 {
-	return position * float2(resolution, resolution) / DIMENSIONS;
+	return position * (float2)resolution / DIMENSIONS;
+}
+
+float2 getPixelPosition(int2 coords) 
+{
+	return coords / ((float2)resolution / DIMENSIONS);
 }
 
 bool withinScreen(int2 coords)
@@ -140,25 +203,25 @@ bool withinScreen(int2 coords)
 	return coords.x > 0 && coords.y > 0 && coords.x < resolution*aspectRatio && coords.y < resolution;
 }
 
-void drawCircle(float2 centerPosition)
+void drawDot(float2 centerPosition)
 {
 	const int2 center = getCoords(centerPosition);
-	int2 start = center - nodeSize;
-	int2 end = center + nodeSize;
+	int2 start = center - pointSize;
+	int2 end = center + pointSize;
 
 	for(int y = start.y; y <= end.y; y++)
 	for(int x = start.x; x <= end.x; x++)
 	{
 		const int2 currentCoord = int2(x, y);
 		const int dist = distance(currentCoord, center);
-		if (dist <= nodeSize)
+		if (dist <= pointSize)
 		{
-			const float color = .5 + .5 * smoothstep(.0, 1.0, 1.0 - (float)dist / (float)nodeSize);
-			outTexture[currentCoord] += float4(color, color, color, 1.0);
+			const float aa = .5 + .5 * smoothstep(.0, 1.0, 1.0 - (float)dist / (float)pointSize);
+			const float4 color = aa * pointColor;
+			outTexture[currentCoord] += color;
 		}
 	}
 }
-
 
 [numthreads(NUMTHREADS_POINTS, 1, 1)]
 void renderKernel(uint3 id : SV_DispatchThreadID)
@@ -170,7 +233,7 @@ void renderKernel(uint3 id : SV_DispatchThreadID)
 
 	const Node node = readBuffer[id.x];
 
-	drawCircle(node.position);
+	drawDot(node.position);
 }
 
 
@@ -202,6 +265,9 @@ void appendKernel(uint3 id : SV_DispatchThreadID)
 
 		Node chosenNode = writeBuffer[chosenIndex];
 		const int nextIndex = chosenNode.next;
+
+		if (invalidIndex(nextIndex)) continue;
+
 		Node nextNode = writeBuffer[nextIndex];
 
 		nextNode.previous = newIndex;

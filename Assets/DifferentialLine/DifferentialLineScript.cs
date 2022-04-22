@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using System.Runtime.InteropServices;
 #pragma warning disable 0649
 
 public class DifferentialLineScript : ComputeShaderScript
@@ -22,10 +23,22 @@ public class DifferentialLineScript : ComputeShaderScript
     int ToDispatchResolution { get { return resolution / NUMTHREADS_RESOLUTION; } }
     int ToDispatchPoints { get { return nodeCount / NUMTHREADS_POINTS + 1; } }
 
+    enum StartShape 
+    {
+        Line = 0,
+        Circle = 1
+    }
+
     [SerializeField, ComputeVariable(frequency: UpdateFrequency.OnStart)]
-    int maxCount;
-    [SerializeField, ComputeVariable]
+    StartShape startShape;
+
+    [SerializeField, ComputeVariable(frequency: UpdateFrequency.OnStart)]
     float initialRadius;
+    [SerializeField, ComputeVariable(frequency: UpdateFrequency.OnStart)]
+    Vector4 lineStartAndEnd;
+    [SerializeField, ComputeVariable]
+    bool pinEnds;
+
     [SerializeField, ComputeVariable]
     int initialCount;
 
@@ -40,6 +53,8 @@ public class DifferentialLineScript : ComputeShaderScript
     [ComputeVariable]
     float deltaTime;
 
+    [SerializeField, ComputeVariable(frequency: UpdateFrequency.OnStart)]
+    int maxCount;
     [SerializeField]
     float newNodesPerSecond;
     float newNodesCounter;
@@ -49,9 +64,9 @@ public class DifferentialLineScript : ComputeShaderScript
      ComputeVariable(nameof(appendKernel))]
     ComputeBuffer writeBuffer;
     
-    [ComputeVariable(nameof(updateKernel)), 
-     ComputeVariable(nameof(renderKernel)), 
-     ComputeVariable(nameof(appendKernel), variableName: "writeBuffer2"), 
+    [ComputeVariable(nameof(updateKernel)),
+     ComputeVariable(nameof(renderKernel)),
+     ComputeVariable(nameof(appendKernel), variableName: "writeBuffer2"),
      ComputeVariable(nameof(resetKernel))]
     ComputeBuffer readBuffer;
 
@@ -60,22 +75,26 @@ public class DifferentialLineScript : ComputeShaderScript
      ComputeVariable(nameof(resetTextureKernel), frequency: UpdateFrequency.OnStart)]
     RenderTexture outTexture;
 
-    [SerializeField, ComputeVariable(frequency: UpdateFrequency.OnStart)]
-    int resolution;
+    [ComputeVariable(frequency: UpdateFrequency.OnStart)]
+    readonly float aspectRatio = 16f / 9f;
 
-    [SerializeField, Range(1, 10), ComputeVariable]
-    int nodeSize = 3;
+    public Vector2Int outputDimensions => new Vector2Int(150, 100) * 10;
+    
+    [ComputeVariable]
+    int nodeCount = 0;
 
     [SerializeField]
     bool clearTexture;
     [SerializeField, ComputeVariable]
     float fadeCoefficient;
+    [SerializeField, Range(1, 20), ComputeVariable]
+    int pointSize = 3;
+    [SerializeField, ComputeVariable]
+    Color pointColor;
+    [SerializeField, ComputeVariable(frequency: UpdateFrequency.OnStart)]
+    int resolution;
 
-    [ComputeVariable(frequency: UpdateFrequency.OnStart)]
-    readonly float aspectRatio = 16f / 9f;
-    
-    [ComputeVariable]
-    int nodeCount = 0;
+    public Vector2Int textureSize => new Vector2Int(outTexture.width, outTexture.height);
 
     protected override void ResetState()
     {
@@ -106,9 +125,11 @@ public class DifferentialLineScript : ComputeShaderScript
         {
             computeShader.Dispatch(resetTextureKernel, (int)(ToDispatchResolution*aspectRatio), ToDispatchResolution, 1);
         }
+        
         int toDispatchPoints = ToDispatchPoints;
         computeShader.SetInt("step", steps);
         computeShader.Dispatch(updateKernel, toDispatchPoints, 1, 1);
+        
         computeShader.Dispatch(renderKernel, toDispatchPoints, 1, 1);
         outMaterial.SetTexture("_MainTex", outTexture);
 
@@ -137,5 +158,28 @@ public class DifferentialLineScript : ComputeShaderScript
     {
         readBuffer?.Dispose();
         writeBuffer?.Dispose();
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DifferentialNode
+    {
+        public Vector2 position;
+        public int previous;
+        public int next;
+    };
+
+    public DifferentialNode[] DownloadNodes() 
+    {
+        
+        var result = new DifferentialNode[nodeCount];
+
+        readBuffer.GetData(result);
+
+        for (int i = 0; i < result.Length; i++) 
+        {
+            result[i].position = result[i].position * 10.0f;
+        }
+
+        return result;
     }
 }

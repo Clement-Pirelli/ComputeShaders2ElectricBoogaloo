@@ -17,7 +17,7 @@ public abstract class ComputeShaderScript : MonoBehaviour
     protected int steps = 0;
 
     private Dictionary<string, int> namesToKernels = new Dictionary<string, int>();
-    protected int GetKernel(string name) 
+    protected int GetKernel(string name)
     {
         int kernel;
         return namesToKernels.TryGetValue(name, out kernel) ? kernel : computeShader.FindKernel(name);
@@ -66,11 +66,11 @@ public abstract class ComputeShaderScript : MonoBehaviour
 
 
     const BindingFlags bindingFlags = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance;
-    private void UpdateComputeVariables(UpdateFrequency frequencyToMatch) 
+    private void UpdateComputeVariables(UpdateFrequency frequencyToMatch)
     {
-        foreach (var field in GetType().GetFields(bindingFlags)) 
+        foreach (var field in GetType().GetFields(bindingFlags))
         {
-            var attributes = (ComputeVariableAttribute[]) field.GetCustomAttributes(typeof(ComputeVariableAttribute), false);
+            var attributes = (ComputeVariableAttribute[])field.GetCustomAttributes(typeof(ComputeVariableAttribute), false);
             foreach (ComputeVariableAttribute attribute in attributes)
             {
                 if (attribute.Frequency.HasFlag(frequencyToMatch))
@@ -84,8 +84,15 @@ public abstract class ComputeShaderScript : MonoBehaviour
         }
     }
 
-    private void UpdateComputeVariable(object value, string name, int kernel) 
+    private void UpdateComputeVariable(object value, string name, int kernel)
     {
+        //for enums, extract their underlying value and type
+        if (value.GetType().IsEnum)
+        {
+            Type underlying = value.GetType().GetEnumUnderlyingType();
+            value = Convert.ChangeType(value, underlying);
+        }
+
         switch (value)
         {
             case bool b:
@@ -134,7 +141,7 @@ public abstract class ComputeShaderScript : MonoBehaviour
         foreach (var field in GetType().GetFields(bindingFlags))
         {
             var attribute = field.GetCustomAttribute<ComputeKernelAttribute>();
-            if(attribute != null)
+            if (attribute != null)
             {
                 var name = attribute.NameOverride ?? field.Name;
                 var value = field.GetValue(this);
