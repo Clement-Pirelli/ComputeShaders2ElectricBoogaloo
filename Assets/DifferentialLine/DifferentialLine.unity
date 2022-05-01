@@ -357,13 +357,13 @@ MonoBehaviour:
   pinEnds: 0
   initialCount: 256
   repulsionRadius: 2.07
-  minNeighborDist: 0.3
+  minNeighborDist: 0.94
   movementSpeed: 3
   maxCount: 16384
-  newNodesPerSecond: 100
+  newNodesPerSecond: 0
   clearTexture: 1
   fadeCoefficient: 0
-  pointSize: 10
+  pointSize: 3
   pointColor: {r: 1, g: 1, b: 1, a: 0}
   resolution: 2040
 --- !u!114 &1885568646
@@ -378,7 +378,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 322efb0250b468e45abf0ed797791686, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  snapshotTime: 4
+  snapshotTime: 1
+  accTime: 0
 --- !u!1 &2006668162
 GameObject:
   m_ObjectHideFlags: 0

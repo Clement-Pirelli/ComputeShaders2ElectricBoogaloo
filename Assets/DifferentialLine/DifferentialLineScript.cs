@@ -170,7 +170,6 @@ public class DifferentialLineScript : ComputeShaderScript
 
     public DifferentialNode[] DownloadNodes() 
     {
-        
         var result = new DifferentialNode[nodeCount];
 
         readBuffer.GetData(result);
